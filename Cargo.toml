@@ -1,0 +1,21 @@
+[package]
+name = "aprs-decode"
+version = "0.1.0"
+edition = "2024"
+description = "Robust APRS packet parsing — text (APRS-IS) and binary (AX.25) input"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name = "aprs_decode"
+path = "src/lib.rs"
+
+[features]
+default = []
+serde = ["dep:serde"]
+
+[dependencies]
+thiserror = "2"
+serde = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+approx = "0.5"
