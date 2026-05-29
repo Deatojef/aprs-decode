@@ -363,4 +363,20 @@ mod tests {
         assert_eq!(decoded.from.to_string(), "W1AW-9");
         assert_eq!(decoded.to.to_string(), "APRS");
     }
+
+    // Real-world packet using all-'@' compressed null-position and space csT bytes.
+    // The station has no GPS lock and uses '@' placeholders with a malformed (all-space)
+    // csT block. The '!' DTI must still dispatch to Position, not Unknown.
+    #[test]
+    fn null_position_at_signs() {
+        let raw = b"N0AMY-3>BEACON,W0OOD-2*,WIDE2*,WIDE1-1:!/@@@@@@@@@@    WWW.TONYTYLER.COM WHERE IS SHAMERFACE SHE IS WITH DOMO";
+        let pkt = AprsPacket::decode_textual(raw).unwrap();
+        assert_eq!(pkt.from.to_string(), "N0AMY-3");
+        assert!(matches!(pkt.data, AprsData::Position(_)));
+        if let AprsData::Position(ref pos) = pkt.data {
+            assert!(!pos.messaging_supported);
+            assert!(pos.timestamp.is_none());
+            assert!(pos.comment.starts_with(b"  WWW.TONYTYLER.COM"));
+        }
+    }
 }

@@ -203,19 +203,22 @@ pub enum CompressedCs {
 impl CompressedCs {
     /// Parse the 3-byte csT block (c byte, s byte, t byte).
     pub(crate) fn parse(c: u8, s: u8, t_raw: u8) -> Result<Self, AprsError> {
+        // When c is space, or any byte is out of the valid base-91 / T-byte range
+        // (seen in null-position packets that use '@' or space placeholders), fall
+        // back to None rather than rejecting the whole packet.
         if c == b' ' {
-            let t = CompressionType::from(
-                t_raw.checked_sub(33)
-                    .ok_or(AprsError::InvalidCompressedByte { byte: t_raw })?
-            );
-            return Ok(CompressedCs::None(t));
+            let t_val = t_raw.checked_sub(33).unwrap_or(0);
+            return Ok(CompressedCs::None(CompressionType::from(t_val)));
         }
-        let c_val = base91_decode1(c).ok_or(AprsError::InvalidCompressedByte { byte: c })?;
-        let s_val = base91_decode1(s).ok_or(AprsError::InvalidCompressedByte { byte: s })?;
-        let t = CompressionType::from(
-            t_raw.checked_sub(33)
-                .ok_or(AprsError::InvalidCompressedByte { byte: t_raw })?
-        );
+        let c_val = match base91_decode1(c) {
+            Some(v) => v,
+            None => return Ok(CompressedCs::None(CompressionType::from(0))),
+        };
+        let s_val = match base91_decode1(s) {
+            Some(v) => v,
+            None => return Ok(CompressedCs::None(CompressionType::from(0))),
+        };
+        let t = CompressionType::from(t_raw.checked_sub(33).unwrap_or(0));
 
         let cs = if t.nmea_source == NmeaSource::Gga {
             CompressedCs::Altitude(CompressedAltitude::from_cs(c_val, s_val), t)
