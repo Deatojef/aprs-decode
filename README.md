@@ -413,4 +413,3 @@ Licensed under either of:
 
 at your option.
 
-Copyright © 2026 Jeff Deaton
