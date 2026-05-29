@@ -4,7 +4,6 @@ version = "0.1.1"
 edition = "2024"
 description = "Robust APRS packet parsing — text (APRS-IS) and binary (AX.25) input"
 license = "MIT OR Apache-2.0"
-license-file = "LICENSE-MIT"
 readme = "README.md"
 repository = "https://github.com/Deatojef/aprs-decode"
 keywords = ["aprs", "ax25", "amateur-radio", "packet", "ham-radio"]
