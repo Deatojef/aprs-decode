@@ -15,8 +15,8 @@ pub mod status;
 pub mod telemetry;
 pub mod third_party;
 pub mod types;
-pub(crate) mod util;
 pub mod user_defined;
+pub(crate) mod util;
 pub mod weather;
 
 pub use callsign::Callsign;

@@ -26,39 +26,91 @@ impl Dao {
     /// base coordinate's sign.
     pub fn offsets_degrees(&self) -> (f64, f64) {
         match self {
-            Dao::HumanReadable { lat_digit, lon_digit } => {
+            Dao::HumanReadable {
+                lat_digit,
+                lon_digit,
+            } => {
                 // each digit = 0.001 minutes = 0.001/60 degrees
-                ((*lat_digit as f64) / 60_000.0, (*lon_digit as f64) / 60_000.0)
+                (
+                    (*lat_digit as f64) / 60_000.0,
+                    (*lon_digit as f64) / 60_000.0,
+                )
             }
-            Dao::Base91 { lat_offset, lon_offset } => {
+            Dao::Base91 {
+                lat_offset,
+                lon_offset,
+            } => {
                 // value 0..90 → 0..0.01 minutes = 0..0.01/60 degrees
-                ((*lat_offset as f64) / (91.0 * 6000.0), (*lon_offset as f64) / (91.0 * 6000.0))
+                (
+                    (*lat_offset as f64) / (91.0 * 6000.0),
+                    (*lon_offset as f64) / (91.0 * 6000.0),
+                )
             }
         }
     }
 
-    /// Scan `data` for the `!X__!` DAO pattern and return the first match.
+    /// Decode a trailing DAO token of the form `!Xyy!` from the comment field.
+    ///
+    /// The DAO extension is, per spec, appended to the **end** of the comment. We
+    /// therefore only accept it as the final non-whitespace token rather than
+    /// scanning the whole comment for any `!..!` substring — the latter readily
+    /// false-matches arbitrary comment text and would silently perturb the
+    /// reported coordinates.
     pub(crate) fn find_in_comment(data: &[u8]) -> Option<Self> {
-        for i in 0..data.len().saturating_sub(4) {
-            if data[i] == b'!' && data.get(i + 4) == Some(&b'!') {
-                let prefix = data[i + 1];
-                let d1 = data[i + 2];
-                let d2 = data[i + 3];
-                if prefix.is_ascii_uppercase() && d1.is_ascii_digit() && d2.is_ascii_digit() {
-                    return Some(Dao::HumanReadable {
-                        lat_digit: d1 - b'0',
-                        lon_digit: d2 - b'0',
-                    });
-                }
-                if prefix.is_ascii_lowercase() && (0x21..=0x7B).contains(&d1) && (0x21..=0x7B).contains(&d2) {
-                    return Some(Dao::Base91 {
-                        lat_offset: d1 - 33,
-                        lon_offset: d2 - 33,
-                    });
-                }
-            }
+        let end = data.iter().rposition(|&b| !b.is_ascii_whitespace())? + 1;
+        if end < 5 {
+            return None;
+        }
+        Self::parse_token(&data[end - 5..end])
+    }
+
+    /// Decode a single 5-byte `!Xyy!` DAO token.
+    ///
+    /// The **case** of the datum letter `X` selects the encoding of the two data
+    /// bytes (per `aprs.org/aprs12/datum.txt`):
+    /// - uppercase (e.g. `W` = WGS84) → human-readable decimal digits `0`–`9`,
+    /// - lowercase (e.g. `w` = WGS84) → base-91 encoded offsets.
+    ///
+    /// A space in a data position marks an unused axis (no added precision).
+    fn parse_token(token: &[u8]) -> Option<Self> {
+        if token.len() != 5 || token[0] != b'!' || token[4] != b'!' {
+            return None;
+        }
+        let prefix = token[1];
+        let d1 = token[2];
+        let d2 = token[3];
+
+        if prefix.is_ascii_uppercase() {
+            return Some(Dao::HumanReadable {
+                lat_digit: hr_digit(d1)?,
+                lon_digit: hr_digit(d2)?,
+            });
+        }
+        if prefix.is_ascii_lowercase() {
+            return Some(Dao::Base91 {
+                lat_offset: b91_digit(d1)?,
+                lon_offset: b91_digit(d2)?,
+            });
         }
         None
+    }
+}
+
+/// Decode a human-readable DAO data byte: a decimal digit, or a space (unused → 0).
+fn hr_digit(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b' ' => Some(0),
+        _ => None,
+    }
+}
+
+/// Decode a base-91 DAO data byte (`!`..`{`), or a space (unused → 0).
+fn b91_digit(b: u8) -> Option<u8> {
+    match b {
+        0x21..=0x7B => Some(b - 33),
+        b' ' => Some(0),
+        _ => None,
     }
 }
 
@@ -107,7 +159,10 @@ impl Position {
 
     fn parse_uncompressed(b: &[u8]) -> Result<(Option<&[u8]>, Self), AprsError> {
         if b.len() < 19 {
-            return Err(AprsError::TruncatedPacket { expected: 19, got: b.len() });
+            return Err(AprsError::TruncatedPacket {
+                expected: 19,
+                got: b.len(),
+            });
         }
         let (lat, precision) = Latitude::parse_uncompressed(&b[0..8])?;
         let symbol_table = b[8] as char;
@@ -149,7 +204,10 @@ impl Position {
 
     fn parse_compressed(b: &[u8]) -> Result<(Option<&[u8]>, Self), AprsError> {
         if b.len() < 13 {
-            return Err(AprsError::TruncatedPacket { expected: 13, got: b.len() });
+            return Err(AprsError::TruncatedPacket {
+                expected: 13,
+                got: b.len(),
+            });
         }
         let symbol_table = b[0] as char;
         let lat = Latitude::parse_compressed(&b[1..5])?;
@@ -181,10 +239,31 @@ impl Position {
 
     /// Encode as uncompressed position bytes (19 bytes: lat + sym_table + lon + sym_code).
     pub(crate) fn encode_uncompressed(&self, out: &mut Vec<u8>) {
-        self.latitude.encode_uncompressed(out, self.precision);
+        // DAO offsets are baked into `latitude`/`longitude` at parse time, and the DAO
+        // token itself is preserved in the comment field (re-emitted on encode). The
+        // base DDmm.mm field must therefore exclude the offset, or a decode→encode→decode
+        // round-trip would apply it twice.
+        let (lat, lon) = self.base_coords();
+        lat.encode_uncompressed(out, self.precision);
         out.push(self.symbol.table as u8);
-        self.longitude.encode_uncompressed(out);
+        lon.encode_uncompressed(out);
         out.push(self.symbol.code as u8);
+    }
+
+    /// Coordinates with any DAO refinement removed, matching the raw base position field.
+    /// Mirrors the offset application in [`Position::parse_uncompressed`].
+    fn base_coords(&self) -> (Latitude, Longitude) {
+        let Some(ref d) = self.dao else {
+            return (self.latitude, self.longitude);
+        };
+        let (dlat, dlon) = d.offsets_degrees();
+        let lat = self.latitude.value();
+        let lon = self.longitude.value();
+        let lat_sign = if lat >= 0.0 { 1.0 } else { -1.0 };
+        let lon_sign = if lon >= 0.0 { 1.0 } else { -1.0 };
+        let base_lat = Latitude::new(lat - lat_sign * dlat).unwrap_or(self.latitude);
+        let base_lon = Longitude::new(lon - lon_sign * dlon).unwrap_or(self.longitude);
+        (base_lat, base_lon)
     }
 
     /// Encode as compressed position bytes (13 bytes: sym_table + lat(4) + lon(4) + sym_code + csT(3)).
@@ -207,7 +286,9 @@ pub(crate) fn altitude_in_comment(data: &[u8]) -> Option<Altitude> {
     let s = std::str::from_utf8(data).ok()?;
     let start = s.find("/A=")?;
     let rest = &s[start + 3..];
-    let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
     let feet: u32 = rest[..end].parse().ok()?;
     Some(Altitude::new(feet as f64))
 }
@@ -244,6 +325,67 @@ mod tests {
             49.05833333333333 + 5.0 / 60_000.0,
             epsilon = 1e-9
         );
+    }
+
+    #[test]
+    fn dao_uppercase_is_human_readable() {
+        // `W` (uppercase) selects the human-readable digit form.
+        assert_eq!(
+            Dao::find_in_comment(b"!W56!"),
+            Some(Dao::HumanReadable {
+                lat_digit: 5,
+                lon_digit: 6
+            })
+        );
+    }
+
+    #[test]
+    fn dao_lowercase_is_base91() {
+        // `w` (lowercase) selects the base-91 form; same trailing bytes decode
+        // to base-91 offsets, NOT digits.
+        assert_eq!(
+            Dao::find_in_comment(b"!w56!"),
+            Some(Dao::Base91 {
+                lat_offset: b'5' - 33,
+                lon_offset: b'6' - 33
+            })
+        );
+    }
+
+    #[test]
+    fn dao_human_readable_space_is_unused_axis() {
+        assert_eq!(
+            Dao::find_in_comment(b"!W5 !"),
+            Some(Dao::HumanReadable {
+                lat_digit: 5,
+                lon_digit: 0
+            })
+        );
+    }
+
+    #[test]
+    fn dao_must_be_at_end() {
+        // A `!..!` substring buried in comment text must not be treated as DAO.
+        assert_eq!(Dao::find_in_comment(b"say!axy! ok"), None);
+    }
+
+    #[test]
+    fn dao_false_match_does_not_shift_coords() {
+        let clean = Position::parse(b"4903.50N/07201.75W-hello world")
+            .unwrap()
+            .1;
+        let texty = Position::parse(b"4903.50N/07201.75W-say!axy! ok")
+            .unwrap()
+            .1;
+        assert!(texty.dao.is_none());
+        assert_eq!(clean.latitude.value(), texty.latitude.value());
+        assert_eq!(clean.longitude.value(), texty.longitude.value());
+    }
+
+    #[test]
+    fn dao_non_letter_datum_rejected() {
+        // Digits / punctuation in the datum position are not valid DAO.
+        assert_eq!(Dao::find_in_comment(b"!156!"), None);
     }
 
     #[test]

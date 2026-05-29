@@ -11,69 +11,85 @@ use crate::types::lonlat::{Latitude, Longitude, Precision};
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MicEMessage {
-    M0, M1, M2, M3, M4, M5, M6,
-    C0, C1, C2, C3, C4, C5, C6,
+    M0,
+    M1,
+    M2,
+    M3,
+    M4,
+    M5,
+    M6,
+    C0,
+    C1,
+    C2,
+    C3,
+    C4,
+    C5,
+    C6,
     Emergency,
     Unknown,
 }
 
 impl MicEMessage {
     fn from_bits(a: MsgBit, b: MsgBit, c: MsgBit) -> Self {
-        use MsgBit::{Custom, Standard, Zero};
         use MicEMessage::*;
+        use MsgBit::{Custom, Standard, Zero};
         match (a, b, c) {
             (Standard, Standard, Standard) => M0,
-            (Custom,   Custom,   Custom)   => C0,
-            (Standard, Standard, Zero)     => M1,
-            (Custom,   Custom,   Zero)     => C1,
-            (Standard, Zero,     Standard) => M2,
-            (Custom,   Zero,     Custom)   => C2,
-            (Standard, Zero,     Zero)     => M3,
-            (Custom,   Zero,     Zero)     => C3,
-            (Zero,     Standard, Standard) => M4,
-            (Zero,     Custom,   Custom)   => C4,
-            (Zero,     Standard, Zero)     => M5,
-            (Zero,     Custom,   Zero)     => C5,
-            (Zero,     Zero,     Standard) => M6,
-            (Zero,     Zero,     Custom)   => C6,
-            (Zero,     Zero,     Zero)     => Emergency,
-            _                              => Unknown,
+            (Custom, Custom, Custom) => C0,
+            (Standard, Standard, Zero) => M1,
+            (Custom, Custom, Zero) => C1,
+            (Standard, Zero, Standard) => M2,
+            (Custom, Zero, Custom) => C2,
+            (Standard, Zero, Zero) => M3,
+            (Custom, Zero, Zero) => C3,
+            (Zero, Standard, Standard) => M4,
+            (Zero, Custom, Custom) => C4,
+            (Zero, Standard, Zero) => M5,
+            (Zero, Custom, Zero) => C5,
+            (Zero, Zero, Standard) => M6,
+            (Zero, Zero, Custom) => C6,
+            (Zero, Zero, Zero) => Emergency,
+            _ => Unknown,
         }
     }
 
     fn to_bits(self) -> (MsgBit, MsgBit, MsgBit) {
-        use MsgBit::{Custom, Standard, Zero};
         use MicEMessage::*;
+        use MsgBit::{Custom, Standard, Zero};
         match self {
             M0 => (Standard, Standard, Standard),
-            C0 => (Custom,   Custom,   Custom),
+            C0 => (Custom, Custom, Custom),
             M1 => (Standard, Standard, Zero),
-            C1 => (Custom,   Custom,   Zero),
-            M2 => (Standard, Zero,     Standard),
-            C2 => (Custom,   Zero,     Custom),
-            M3 => (Standard, Zero,     Zero),
-            C3 => (Custom,   Zero,     Zero),
-            M4 => (Zero,     Standard, Standard),
-            C4 => (Zero,     Custom,   Custom),
-            M5 => (Zero,     Standard, Zero),
-            C5 => (Zero,     Custom,   Zero),
-            M6 => (Zero,     Zero,     Standard),
-            C6 => (Zero,     Zero,     Custom),
+            C1 => (Custom, Custom, Zero),
+            M2 => (Standard, Zero, Standard),
+            C2 => (Custom, Zero, Custom),
+            M3 => (Standard, Zero, Zero),
+            C3 => (Custom, Zero, Zero),
+            M4 => (Zero, Standard, Standard),
+            C4 => (Zero, Custom, Custom),
+            M5 => (Zero, Standard, Zero),
+            C5 => (Zero, Custom, Zero),
+            M6 => (Zero, Zero, Standard),
+            C6 => (Zero, Zero, Custom),
             Emergency => (Zero, Zero, Zero),
-            Unknown   => (Standard, Custom, Standard), // arbitrary non-ambiguous combo
+            Unknown => (Standard, Custom, Standard), // arbitrary non-ambiguous combo
         }
     }
 }
 
 #[derive(Copy, Clone)]
-enum MsgBit { Zero, Custom, Standard }
+enum MsgBit {
+    Zero,
+    Custom,
+    Standard,
+}
 
 impl MsgBit {
     fn from_byte(c: u8) -> Option<Self> {
         match c {
             b'0'..=b'9' | b'L' => Some(MsgBit::Zero),
-            b'A'..=b'K'        => Some(MsgBit::Custom),
-            b'P'..=b'Z'        => Some(MsgBit::Standard),
+            b'A'..=b'K' => Some(MsgBit::Custom),
+            b'P'..=b'Z' => Some(MsgBit::Standard),
             _ => None,
         }
     }
@@ -88,7 +104,9 @@ impl MsgBit {
 pub struct MicESpeed(pub u32);
 
 impl MicESpeed {
-    pub fn knots(self) -> u32 { self.0 }
+    pub fn knots(self) -> u32 {
+        self.0
+    }
 }
 
 /// Course in degrees (0 = unknown/not applicable, 1–360).
@@ -99,7 +117,9 @@ pub struct MicECourse(pub u32);
 
 impl MicECourse {
     pub const UNKNOWN: Self = Self(0);
-    pub fn degrees(self) -> u32 { self.0 }
+    pub fn degrees(self) -> u32 {
+        self.0
+    }
 }
 
 // ─── Device ID ───────────────────────────────────────────────────────────────
@@ -118,6 +138,7 @@ pub struct MicEDevice {
 /// Entries with longer prefixes must appear first to match greedily.
 ///
 /// Sources: direwolf deviceid.c, APRS MIC-E spec, aprsorg/aprs-deviceid
+#[rustfmt::skip]
 static MICE_PREFIX_TABLE: &[(&[u8], &str, &str)] = &[
     // Kenwood — prefix is the first 1-2 bytes of the optional-rest field (before altitude)
     (b">=", "Kenwood", "TH-D72"),
@@ -141,7 +162,10 @@ static MICE_PREFIX_TABLE: &[(&[u8], &str, &str)] = &[
 fn lookup_device(prefix: &[u8]) -> Option<MicEDevice> {
     for &(pat, mfr, model) in MICE_PREFIX_TABLE {
         if prefix.starts_with(pat) {
-            return Some(MicEDevice { manufacturer: mfr.to_string(), model: model.to_string() });
+            return Some(MicEDevice {
+                manufacturer: mfr.to_string(),
+                model: model.to_string(),
+            });
         }
     }
     None
@@ -149,10 +173,22 @@ fn lookup_device(prefix: &[u8]) -> Option<MicEDevice> {
 
 fn lookup_byonics_suffix(comment: &[u8]) -> Option<(MicEDevice, &[u8])> {
     if comment.ends_with(b"|3") {
-        return Some((MicEDevice { manufacturer: "Byonics".to_string(), model: "TinyTrak3".to_string() }, &comment[..comment.len()-2]));
+        return Some((
+            MicEDevice {
+                manufacturer: "Byonics".to_string(),
+                model: "TinyTrak3".to_string(),
+            },
+            &comment[..comment.len() - 2],
+        ));
     }
     if comment.ends_with(b"|4") {
-        return Some((MicEDevice { manufacturer: "Byonics".to_string(), model: "TinyTrak4".to_string() }, &comment[..comment.len()-2]));
+        return Some((
+            MicEDevice {
+                manufacturer: "Byonics".to_string(),
+                model: "TinyTrak4".to_string(),
+            },
+            &comment[..comment.len() - 2],
+        ));
     }
     None
 }
@@ -197,19 +233,23 @@ impl AprsMicE {
 
         // Decode destination callsign → latitude, precision, message type, lon offset/dir
         let (latitude, precision, message, lon_offset_100, lon_east) =
-            decode_dest(to).ok_or_else(|| AprsError::InvalidMicEDestination { raw: to.as_str().as_bytes().to_vec() })?;
+            decode_dest(to).ok_or_else(|| AprsError::InvalidMicEDestination {
+                raw: to.as_str().as_bytes().to_vec(),
+            })?;
 
         // The info field (after DTI) must have at least 8 bytes:
         //   lon_d(1) lon_m(1) lon_h(1) sp(1) dc(1) se(1) sym_code(1) sym_table(1)
-        let b = info.get(1..).ok_or(AprsError::MicETooShort { len: info.len() })?;
+        let b = info
+            .get(1..)
+            .ok_or(AprsError::MicETooShort { len: info.len() })?;
         if b.len() < 8 {
             return Err(AprsError::MicETooShort { len: info.len() });
         }
 
         let longitude = decode_longitude(&b[0..3], lon_offset_100, lon_east)
             .ok_or(AprsError::MicETooShort { len: info.len() })?;
-        let (speed, course) = decode_speed_course(&b[3..6])
-            .ok_or(AprsError::MicETooShort { len: info.len() })?;
+        let (speed, course) =
+            decode_speed_course(&b[3..6]).ok_or(AprsError::MicETooShort { len: info.len() })?;
 
         let symbol_code = b[6] as char;
         let symbol_table = b[7] as char;
@@ -221,16 +261,12 @@ impl AprsMicE {
         let (raw_mfg, altitude_m, comment_raw) = parse_rest(rest);
         let device = raw_mfg.as_deref().and_then(lookup_device);
 
-        // Check for Byonics suffix in the comment
-        let (device, comment) = if device.is_none() {
-            if let Some((dev, trimmed)) = lookup_byonics_suffix(comment_raw) {
-                (Some(dev), trimmed.to_vec())
-            } else {
-                (device, comment_raw.to_vec())
-            }
-        } else {
-            (device, comment_raw.to_vec())
-        };
+        // Byonics encodes its device as a comment suffix (`|3`/`|4`). Detect it for
+        // the `device` field, but keep the suffix bytes in `comment` so `encode`
+        // re-emits them and the packet round-trips. (The `raw_mfg` prefix is handled
+        // the same way: it stays in `raw_mfg`, which encode re-emits.)
+        let device = device.or_else(|| lookup_byonics_suffix(comment_raw).map(|(dev, _)| dev));
+        let comment = comment_raw.to_vec();
 
         Ok(Self {
             latitude,
@@ -270,9 +306,12 @@ impl AprsMicE {
     /// Encode the destination callsign that carries the latitude + message bits.
     pub fn encode_destination(&self) -> Result<Callsign, AprsError> {
         let mut lat_buf = Vec::new();
-        self.latitude.encode_uncompressed(&mut lat_buf, self.precision);
+        self.latitude
+            .encode_uncompressed(&mut lat_buf, self.precision);
         if lat_buf.len() != 8 {
-            return Err(AprsError::EncodeError { detail: "MIC-E latitude encode failed" });
+            return Err(AprsError::EncodeError {
+                detail: "MIC-E latitude encode failed",
+            });
         }
         let is_north = self.latitude.value() >= 0.0;
         let (lon_deg, _, _, is_east) = self.longitude.dmh();
@@ -288,10 +327,12 @@ impl AprsMicE {
             encode_dest_bit5(lat_buf[6], !is_east),
         ];
 
-        let call_str = std::str::from_utf8(&bytes)
-            .map_err(|_| AprsError::EncodeError { detail: "MIC-E destination is not ASCII" })?;
-        Callsign::decode_textual(call_str.as_bytes())
-            .map_err(|_| AprsError::EncodeError { detail: "MIC-E destination invalid callsign" })
+        let call_str = std::str::from_utf8(&bytes).map_err(|_| AprsError::EncodeError {
+            detail: "MIC-E destination is not ASCII",
+        })?;
+        Callsign::decode_textual(call_str.as_bytes()).map_err(|_| AprsError::EncodeError {
+            detail: "MIC-E destination invalid callsign",
+        })
     }
 }
 
@@ -299,7 +340,9 @@ impl AprsMicE {
 
 fn decode_dest(c: &Callsign) -> Option<(Latitude, Precision, MicEMessage, bool, bool)> {
     let data = c.as_str().as_bytes();
-    if data.len() != 6 { return None; }
+    if data.len() != 6 {
+        return None;
+    }
 
     let lat_bytes = [
         lat_digit(data[0])?,
@@ -348,19 +391,28 @@ fn lat_dir_byte(c: u8) -> Option<u8> {
 
 fn decode_longitude(b: &[u8], offset_100: bool, is_east: bool) -> Option<Longitude> {
     let mut d = b[0].checked_sub(28)?;
-    if offset_100 { d = d.checked_add(100)?; }
-    if (180..=189).contains(&d) { d -= 80; }
-    else if (190..=199).contains(&d) { d -= 190; }
+    if offset_100 {
+        d = d.checked_add(100)?;
+    }
+    if (180..=189).contains(&d) {
+        d -= 80;
+    } else if (190..=199).contains(&d) {
+        d -= 190;
+    }
 
     let mut m = b[1].checked_sub(28)?;
-    if m >= 60 { m -= 60; }
+    if m >= 60 {
+        m -= 60;
+    }
 
     let h = b[2].checked_sub(28)?;
 
-    Longitude::new(
-        f64::from(d) + f64::from(m) / 60.0 + f64::from(h) / 6000.0
-    ).map(|lon| if is_east { lon } else {
-        Longitude::new(-lon.value()).unwrap_or(lon)
+    Longitude::new(f64::from(d) + f64::from(m) / 60.0 + f64::from(h) / 6000.0).map(|lon| {
+        if is_east {
+            lon
+        } else {
+            Longitude::new(-lon.value()).unwrap_or(lon)
+        }
     })
 }
 
@@ -370,7 +422,7 @@ fn encode_longitude(lon: Longitude, out: &mut Vec<u8>) {
     let m = m as u8;
     let h = h as u8;
     let enc_d = match d {
-        0..=9   => d + 118,  // 0..9 → 118..127 (28+90 offset)
+        0..=9 => d + 118, // 0..9 → 118..127 (28+90 offset)
         10..=99 => d + 28,
         100..=109 => d - 72, // 100..109 → 28..37
         _ => d - 72,
@@ -392,10 +444,14 @@ fn decode_speed_course(b: &[u8]) -> Option<(MicESpeed, MicECourse)> {
     let se = u32::from(b[2].checked_sub(28)?);
 
     let mut speed = sp * 10 + dc / 10;
-    if speed >= 800 { speed -= 800; }
+    if speed >= 800 {
+        speed -= 800;
+    }
 
     let mut course = (dc % 10) * 100 + se;
-    if course >= 400 { course -= 400; }
+    if course >= 400 {
+        course -= 400;
+    }
 
     Some((MicESpeed(speed), MicECourse(course)))
 }
@@ -431,7 +487,11 @@ fn parse_rest(rest: &[u8]) -> (Option<Vec<u8>>, Option<f64>, &[u8]) {
         }
         // Encoding stores (altitude_in_metres + 10000) in base-91 (per direwolf)
         let alt_m_corrected = alt_val as f64 - 10000.0;
-        let raw_mfg = if mfg_bytes.is_empty() { None } else { Some(mfg_bytes.to_vec()) };
+        let raw_mfg = if mfg_bytes.is_empty() {
+            None
+        } else {
+            Some(mfg_bytes.to_vec())
+        };
         let comment = rest.get(idx + 1..).unwrap_or_default();
         return (raw_mfg, Some(alt_m_corrected), comment);
     }
@@ -456,39 +516,39 @@ fn encode_altitude(alt_m: f64, out: &mut Vec<u8>) {
 
 fn encode_dest_012(lat_digit: u8, bit: MsgBit) -> u8 {
     match (bit, lat_digit == b' ') {
-        (MsgBit::Zero,     false) => lat_digit,
-        (MsgBit::Zero,     true)  => b'L',
-        (MsgBit::Custom,   false) => lat_digit + 17,
-        (MsgBit::Custom,   true)  => b'K',
+        (MsgBit::Zero, false) => lat_digit,
+        (MsgBit::Zero, true) => b'L',
+        (MsgBit::Custom, false) => lat_digit + 17,
+        (MsgBit::Custom, true) => b'K',
         (MsgBit::Standard, false) => lat_digit + 32,
-        (MsgBit::Standard, true)  => b'Z',
+        (MsgBit::Standard, true) => b'Z',
     }
 }
 
 fn encode_dest_bit3(lat_digit: u8, is_north: bool) -> u8 {
     match (is_north, lat_digit == b' ') {
-        (true,  false) => lat_digit + 32,
-        (true,  true)  => b'Z',
+        (true, false) => lat_digit + 32,
+        (true, true) => b'Z',
         (false, false) => lat_digit,
-        (false, true)  => b'L',
+        (false, true) => b'L',
     }
 }
 
 fn encode_dest_bit4(lat_digit: u8, lon_offset_100: bool) -> u8 {
     match (lon_offset_100, lat_digit == b' ') {
-        (true,  false) => lat_digit + 32,
-        (true,  true)  => b'Z',
+        (true, false) => lat_digit + 32,
+        (true, true) => b'Z',
         (false, false) => lat_digit,
-        (false, true)  => b'L',
+        (false, true) => b'L',
     }
 }
 
 fn encode_dest_bit5(lat_digit: u8, is_west: bool) -> u8 {
     match (is_west, lat_digit == b' ') {
-        (true,  false) => lat_digit + 32,
-        (true,  true)  => b'Z',
+        (true, false) => lat_digit + 32,
+        (true, true) => b'Z',
         (false, false) => lat_digit,
-        (false, true)  => b'L',
+        (false, true) => b'L',
     }
 }
 
@@ -504,7 +564,7 @@ mod tests {
     fn decode_speed_course_basic() {
         // From the APRS spec example packet: speed/course bytes are n"O
         // n=110, "=34, O=79 → speed=20 knots, course=251°
-        let b = &[b'n', b'"', b'O'];
+        let b = b"n\"O";
         let (spd, crs) = decode_speed_course(b).unwrap();
         assert_eq!(spd.knots(), 20);
         assert_eq!(crs.degrees(), 251);

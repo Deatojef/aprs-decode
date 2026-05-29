@@ -8,7 +8,7 @@ use crate::packet::AprsPacket;
 ///
 /// The payload after `}` is a full textual APRS packet that is recursively
 /// decoded. Decode failures return an error rather than silently ignoring them.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AprsThirdParty {
     /// The forwarded inner packet, recursively decoded.
@@ -20,7 +20,9 @@ impl AprsThirdParty {
     pub(crate) fn parse(info: &[u8]) -> Result<Self, AprsError> {
         let inner_bytes = info.get(1..).unwrap_or_default();
         let inner = AprsPacket::decode_textual(inner_bytes)?;
-        Ok(Self { inner: Box::new(inner) })
+        Ok(Self {
+            inner: Box::new(inner),
+        })
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, AprsError> {
@@ -37,18 +39,17 @@ mod tests {
 
     #[test]
     fn decode_third_party_position() {
-        let tp = AprsThirdParty::parse(
-            b"}WB0VGI-7>APOT30,W0RO-11*,WIDE2-1:!4228.35N/09101.45Wk",
-        ).unwrap();
+        let tp = AprsThirdParty::parse(b"}WB0VGI-7>APOT30,W0RO-11*,WIDE2-1:!4228.35N/09101.45Wk")
+            .unwrap();
         assert_eq!(tp.inner.from.to_string(), "WB0VGI-7");
         assert!(matches!(tp.inner.data, AprsData::Position(_)));
     }
 
     #[test]
     fn decode_third_party_message() {
-        let tp = AprsThirdParty::parse(
-            b"}W1ABC>APRS,WIDE1-1::DEST     :Hello from third party{123",
-        ).unwrap();
+        let tp =
+            AprsThirdParty::parse(b"}W1ABC>APRS,WIDE1-1::DEST     :Hello from third party{123")
+                .unwrap();
         assert_eq!(tp.inner.from.to_string(), "W1ABC");
         assert!(matches!(tp.inner.data, AprsData::Message(_)));
     }

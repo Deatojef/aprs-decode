@@ -18,13 +18,45 @@ impl CallBuf {
     }
 }
 
-/// An APRS callsign with optional numeric SSID (0–15).
+/// Maximum length of an SSID in textual form. AX.25 SSIDs are a single digit
+/// 0–15; APRS-IS and D-STAR gateways additionally use short alphanumeric SSIDs
+/// (e.g. `-S`, `-B`, `-C`). A small bound keeps storage allocation-free.
+const MAX_SSID_LEN: usize = 6;
+
+/// Fixed-capacity stack-allocated ASCII string for an alphanumeric SSID.
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct SsidBuf {
+    bytes: [u8; MAX_SSID_LEN],
+    len: u8,
+}
+
+impl SsidBuf {
+    fn from_uppercased(src: &[u8]) -> Self {
+        let mut bytes = [0u8; MAX_SSID_LEN];
+        for (i, &b) in src.iter().enumerate() {
+            bytes[i] = b.to_ascii_uppercase();
+        }
+        SsidBuf {
+            bytes,
+            len: src.len() as u8,
+        }
+    }
+
+    fn as_str(&self) -> &str {
+        std::str::from_utf8(&self.bytes[..self.len as usize]).expect("ssid is always ASCII")
+    }
+}
+
+/// An APRS callsign with an optional SSID.
 ///
-/// Stored as uppercase ASCII in a fixed-size inline buffer — no heap allocation.
+/// The SSID is usually a numeric 0–15 (as in AX.25) but APRS-IS and D-STAR
+/// gateways also use short alphanumeric SSIDs such as `-S` or `-B`. Both the
+/// base call and SSID are stored as uppercase ASCII in fixed-size inline
+/// buffers — no heap allocation.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Callsign {
     call: CallBuf,
-    pub ssid: Option<u8>,
+    ssid: Option<SsidBuf>,
 }
 
 #[cfg(feature = "serde")]
@@ -43,19 +75,23 @@ impl<'de> serde::Deserialize<'de> for Callsign {
 }
 
 impl Callsign {
-    /// Parse a textual callsign (e.g. `W1AW-9`).
+    /// Parse a textual callsign (e.g. `W1AW-9`, or a D-STAR `K0HRV-S`).
     pub fn decode_textual(input: &[u8]) -> Result<Self, AprsError> {
         let (call_bytes, ssid) = if let Some(pos) = input.iter().position(|&b| b == b'-') {
-            let ssid_bytes = &input[pos + 1..];
-            let ssid = parse_ssid(ssid_bytes)
-                .ok_or_else(|| AprsError::InvalidCallsign { raw: input.to_vec() })?;
-            (&input[..pos], Some(ssid))
+            // `parse_ssid` returns `None` when invalid, `Some(None)` when the SSID
+            // normalizes to "no SSID" (e.g. `-0`, matching AX.25), and `Some(Some)`
+            // otherwise.
+            let ssid = parse_ssid(&input[pos + 1..]).ok_or_else(|| AprsError::InvalidCallsign {
+                raw: input.to_vec(),
+            })?;
+            (&input[..pos], ssid)
         } else {
             (input, None)
         };
 
-        let call = parse_call(call_bytes)
-            .ok_or_else(|| AprsError::InvalidCallsign { raw: input.to_vec() })?;
+        let call = parse_call(call_bytes).ok_or_else(|| AprsError::InvalidCallsign {
+            raw: input.to_vec(),
+        })?;
 
         Ok(Callsign { call, ssid })
     }
@@ -67,25 +103,49 @@ impl Callsign {
     /// Returns `(callsign, eoa)`.
     pub fn decode_ax25(bytes: &[u8]) -> Result<(Self, bool), AprsError> {
         if bytes.len() < 7 {
-            return Err(AprsError::TruncatedPacket { expected: 7, got: bytes.len() });
+            return Err(AprsError::TruncatedPacket {
+                expected: 7,
+                got: bytes.len(),
+            });
         }
         let mut raw_call = [b' '; 6];
         for i in 0..6 {
             let shifted = bytes[i];
             // LSB of each call byte must be 0 in valid AX.25
             if shifted & 0x01 != 0 {
-                return Err(AprsError::InvalidCallsign { raw: bytes[..7].to_vec() });
+                return Err(AprsError::InvalidCallsign {
+                    raw: bytes[..7].to_vec(),
+                });
             }
             raw_call[i] = shifted >> 1;
         }
         // Trim trailing spaces
-        let end = raw_call.iter().rposition(|&b| b != b' ').map(|p| p + 1).unwrap_or(0);
-        let call = parse_call(&raw_call[..end])
-            .ok_or_else(|| AprsError::InvalidCallsign { raw: bytes[..7].to_vec() })?;
+        let end = raw_call
+            .iter()
+            .rposition(|&b| b != b' ')
+            .map(|p| p + 1)
+            .unwrap_or(0);
+        let call = parse_call(&raw_call[..end]).ok_or_else(|| AprsError::InvalidCallsign {
+            raw: bytes[..7].to_vec(),
+        })?;
 
         let ssid_byte = bytes[6];
         let ssid_val = (ssid_byte >> 1) & 0x0F;
-        let ssid = if ssid_val == 0 { None } else { Some(ssid_val) };
+        // AX.25 SSIDs are always numeric; store the canonical decimal form.
+        let ssid = if ssid_val == 0 {
+            None
+        } else {
+            let mut tmp = [0u8; 2];
+            let s: &[u8] = if ssid_val >= 10 {
+                tmp[0] = b'0' + ssid_val / 10;
+                tmp[1] = b'0' + ssid_val % 10;
+                &tmp[..2]
+            } else {
+                tmp[0] = b'0' + ssid_val;
+                &tmp[..1]
+            };
+            Some(SsidBuf::from_uppercased(s))
+        };
         let eoa = ssid_byte & 0x01 != 0;
 
         Ok((Callsign { call, ssid }, eoa))
@@ -95,26 +155,39 @@ impl Callsign {
         self.call.as_str()
     }
 
+    /// The SSID in textual form (e.g. `"9"`, `"S"`), or `None` for no SSID.
+    pub fn ssid(&self) -> Option<&str> {
+        self.ssid.as_ref().map(SsidBuf::as_str)
+    }
+
+    /// The SSID as a number, if it is numeric (0–15). Returns `None` for no SSID
+    /// or for an alphanumeric (e.g. D-STAR) SSID.
+    pub fn ssid_numeric(&self) -> Option<u8> {
+        self.ssid()
+            .and_then(|s| s.parse::<u8>().ok())
+            .filter(|v| *v <= 15)
+    }
+
     /// Write this callsign in textual APRS format.
     pub fn encode_textual(&self, out: &mut Vec<u8>) {
         out.extend_from_slice(self.call.as_str().as_bytes());
-        if let Some(ssid) = self.ssid {
+        if let Some(ref ssid) = self.ssid {
             out.push(b'-');
-            if ssid >= 10 {
-                out.push(b'0' + ssid / 10);
-            }
-            out.push(b'0' + ssid % 10);
+            out.extend_from_slice(ssid.as_str().as_bytes());
         }
     }
 
     /// Write this callsign as a 7-byte AX.25 address field.
+    ///
+    /// AX.25 can only represent numeric SSIDs 0–15; an alphanumeric SSID (only
+    /// valid in textual/APRS-IS form) is encoded as SSID 0.
     pub fn encode_ax25(&self, out: &mut Vec<u8>, eoa: bool) {
         let call = self.call.as_str().as_bytes();
         for i in 0..6 {
             let b = if i < call.len() { call[i] } else { b' ' };
             out.push(b << 1);
         }
-        let ssid_val = self.ssid.unwrap_or(0) & 0x0F;
+        let ssid_val = self.ssid_numeric().unwrap_or(0) & 0x0F;
         let eoa_bit: u8 = if eoa { 0x01 } else { 0x00 };
         // Bits 5 and 7 must be 1 per AX.25 spec (reserved, set to 1)
         out.push(0x60 | (ssid_val << 1) | eoa_bit);
@@ -130,8 +203,8 @@ impl fmt::Debug for Callsign {
 impl fmt::Display for Callsign {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.call.as_str())?;
-        if let Some(ssid) = self.ssid {
-            write!(f, "-{ssid}")?;
+        if let Some(ref ssid) = self.ssid {
+            write!(f, "-{}", ssid.as_str())?;
         }
         Ok(())
     }
@@ -150,24 +223,51 @@ fn parse_call(bytes: &[u8]) -> Option<CallBuf> {
         }
         buf[i] = b.to_ascii_uppercase();
     }
-    Some(CallBuf { bytes: buf, len: bytes.len() as u8 })
+    Some(CallBuf {
+        bytes: buf,
+        len: bytes.len() as u8,
+    })
 }
 
-fn parse_ssid(bytes: &[u8]) -> Option<u8> {
-    if bytes.is_empty() || bytes.len() > 2 {
+/// Parse the SSID portion (the bytes after `-`).
+///
+/// Returns `None` for an invalid SSID, `Some(None)` when it normalizes to
+/// "no SSID" (`-0`, matching AX.25), and `Some(Some(..))` otherwise. A purely
+/// numeric SSID is validated against the AX.25 0–15 range and canonicalized
+/// (no leading zeros); a short alphanumeric SSID (e.g. D-STAR `-S`, `-B`) is
+/// accepted as-is.
+fn parse_ssid(bytes: &[u8]) -> Option<Option<SsidBuf>> {
+    if bytes.is_empty() || bytes.len() > MAX_SSID_LEN {
         return None;
     }
-    let mut val: u8 = 0;
-    for &b in bytes {
-        if !b.is_ascii_digit() {
+    if bytes.iter().all(u8::is_ascii_digit) {
+        // Numeric SSID: enforce the AX.25 0–15 range and canonicalize.
+        let mut val: u8 = 0;
+        for &b in bytes {
+            val = val.checked_mul(10)?.checked_add(b - b'0')?;
+        }
+        if val > 15 {
             return None;
         }
-        val = val.checked_mul(10)?.checked_add(b - b'0')?;
+        if val == 0 {
+            return Some(None);
+        }
+        let mut tmp = [0u8; 2];
+        let s: &[u8] = if val >= 10 {
+            tmp[0] = b'0' + val / 10;
+            tmp[1] = b'0' + val % 10;
+            &tmp[..2]
+        } else {
+            tmp[0] = b'0' + val;
+            &tmp[..1]
+        };
+        return Some(Some(SsidBuf::from_uppercased(s)));
     }
-    if val > 15 {
+    // Alphanumeric SSID (APRS-IS / D-STAR), e.g. `-S`, `-B`, `-RPT`.
+    if !bytes.iter().all(u8::is_ascii_alphanumeric) {
         return None;
     }
-    Some(val)
+    Some(Some(SsidBuf::from_uppercased(bytes)))
 }
 
 #[cfg(test)]
@@ -178,25 +278,44 @@ mod tests {
     fn textual_no_ssid() {
         let c = Callsign::decode_textual(b"W1AW").unwrap();
         assert_eq!(c.as_str(), "W1AW");
-        assert_eq!(c.ssid, None);
+        assert_eq!(c.ssid(), None);
     }
 
     #[test]
     fn textual_with_ssid() {
         let c = Callsign::decode_textual(b"W1AW-9").unwrap();
         assert_eq!(c.as_str(), "W1AW");
-        assert_eq!(c.ssid, Some(9));
+        assert_eq!(c.ssid(), Some("9"));
+        assert_eq!(c.ssid_numeric(), Some(9));
     }
 
     #[test]
     fn textual_ssid_15() {
         let c = Callsign::decode_textual(b"N0CALL-15").unwrap();
-        assert_eq!(c.ssid, Some(15));
+        assert_eq!(c.ssid(), Some("15"));
+        assert_eq!(c.ssid_numeric(), Some(15));
     }
 
     #[test]
     fn textual_ssid_16_invalid() {
         assert!(Callsign::decode_textual(b"N0CALL-16").is_err());
+    }
+
+    #[test]
+    fn textual_ssid_0_normalized_to_none() {
+        let c = Callsign::decode_textual(b"W1AW-0").unwrap();
+        assert_eq!(c.ssid(), None);
+        assert_eq!(c.to_string(), "W1AW");
+    }
+
+    #[test]
+    fn textual_alphanumeric_ssid_dstar() {
+        // D-STAR gateways use alphanumeric SSIDs (`-S`, `-B`, `-C`).
+        let c = Callsign::decode_textual(b"K0HRV-S").unwrap();
+        assert_eq!(c.as_str(), "K0HRV");
+        assert_eq!(c.ssid(), Some("S"));
+        assert_eq!(c.ssid_numeric(), None);
+        assert_eq!(c.to_string(), "K0HRV-S");
     }
 
     #[test]

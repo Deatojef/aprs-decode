@@ -36,7 +36,9 @@ impl AprsObject {
         //                     1234567 = 7-byte timestamp (bytes 11-17)
         //                            ...position + comment
         if info.len() < 18 {
-            return Err(AprsError::InvalidObject { detail: "packet too short" });
+            return Err(AprsError::InvalidObject {
+                detail: "packet too short",
+            });
         }
 
         let mut name = info[1..10].to_vec();
@@ -45,13 +47,18 @@ impl AprsObject {
         let live = match info[10] {
             b'*' => true,
             b'_' | b' ' => false, // spec says `_`, space is a common variant
-            _ => return Err(AprsError::InvalidObject { detail: "invalid liveness byte" }),
+            _ => {
+                return Err(AprsError::InvalidObject {
+                    detail: "invalid liveness byte",
+                });
+            }
         };
 
         let timestamp = Timestamp::parse(&info[11..18])?;
 
-        let position_bytes = info.get(18..)
-            .ok_or(AprsError::InvalidObject { detail: "truncated after timestamp" })?;
+        let position_bytes = info.get(18..).ok_or(AprsError::InvalidObject {
+            detail: "truncated after timestamp",
+        })?;
 
         let (remaining, position) = Position::parse(position_bytes)?;
         let comment_raw = remaining.unwrap_or_default();
@@ -68,13 +75,24 @@ impl AprsObject {
         };
 
         let frequency_mhz = crate::util::extract_frequency_mhz(&comment);
-        Ok(Self { name, live, timestamp, position, extension, frequency_mhz, comment })
+        Ok(Self {
+            name,
+            live,
+            timestamp,
+            position,
+            extension,
+            frequency_mhz,
+            comment,
+        })
     }
 
     pub fn encode(&self) -> Vec<u8> {
         let mut out = vec![b';'];
         out.extend_from_slice(&self.name);
-        out.extend(std::iter::repeat_n(b' ', 9usize.saturating_sub(self.name.len())));
+        out.extend(std::iter::repeat_n(
+            b' ',
+            9usize.saturating_sub(self.name.len()),
+        ));
         out.push(if self.live { b'*' } else { b'_' });
         self.timestamp.encode(&mut out);
 
@@ -106,8 +124,16 @@ mod tests {
         assert_eq!(o.name, b"HFEST-18H");
         assert!(o.live);
         assert_eq!(o.timestamp, Timestamp::Ddhhmm(17, 4, 3));
-        assert_relative_eq!(o.position.latitude.value(), 34.725833333333334, epsilon = 1e-9);
-        assert_relative_eq!(o.position.longitude.value(), -86.59116666666667, epsilon = 1e-9);
+        assert_relative_eq!(
+            o.position.latitude.value(),
+            34.725833333333334,
+            epsilon = 1e-9
+        );
+        assert_relative_eq!(
+            o.position.longitude.value(),
+            -86.59116666666667,
+            epsilon = 1e-9
+        );
         assert_eq!(o.position.symbol.table, '\\');
         assert_eq!(o.position.symbol.code, 'h');
         assert_eq!(o.comment, b"146.940MHz T100 Huntsville Hamfest");
@@ -130,17 +156,13 @@ mod tests {
 
     #[test]
     fn parse_with_extension() {
-        let o = AprsObject::parse(
-            b";HFEST    _170403z3443.55N\\08635.47WhPHG5132Comment"
-        ).unwrap();
+        let o = AprsObject::parse(b";HFEST    _170403z3443.55N\\08635.47WhPHG5132Comment").unwrap();
         assert!(o.extension.is_some());
     }
 
     #[test]
     fn parse_compressed_object() {
-        let o = AprsObject::parse(
-            b";CAR      _092345z/5L!!<*e7>7P[Moving to the north"
-        ).unwrap();
+        let o = AprsObject::parse(b";CAR      _092345z/5L!!<*e7>7P[Moving to the north").unwrap();
         assert_eq!(o.name, b"CAR");
         assert!(!o.live);
         assert_relative_eq!(o.position.latitude.value(), 49.5, epsilon = 0.01);
@@ -157,8 +179,6 @@ mod tests {
     #[test]
     fn timestamp_validates_strictly() {
         // Day 0 is invalid
-        assert!(AprsObject::parse(
-            b";HFEST-18H*002345z3443.55N\\08635.47Wh"
-        ).is_err());
+        assert!(AprsObject::parse(b";HFEST-18H*002345z3443.55N\\08635.47Wh").is_err());
     }
 }

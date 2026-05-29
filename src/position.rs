@@ -33,8 +33,10 @@ impl AprsPosition {
         let has_timestamp = dti == b'@' || dti == b'/';
 
         let (b, timestamp) = if has_timestamp {
-            let ts_bytes = info.get(1..8)
-                .ok_or(AprsError::TruncatedPacket { expected: 8, got: info.len() })?;
+            let ts_bytes = info.get(1..8).ok_or(AprsError::TruncatedPacket {
+                expected: 8,
+                got: info.len(),
+            })?;
             (
                 info.get(8..).unwrap_or_default(),
                 Some(Timestamp::parse(ts_bytes)?),
@@ -108,8 +110,16 @@ mod tests {
         let pos = AprsPosition::parse(b"!4903.50N/07201.75W-").unwrap();
         assert!(pos.timestamp.is_none());
         assert!(!pos.messaging_supported);
-        assert_relative_eq!(pos.position.latitude.value(), 49.05833333333333, epsilon = 1e-9);
-        assert_relative_eq!(pos.position.longitude.value(), -72.02916666666667, epsilon = 1e-9);
+        assert_relative_eq!(
+            pos.position.latitude.value(),
+            49.05833333333333,
+            epsilon = 1e-9
+        );
+        assert_relative_eq!(
+            pos.position.longitude.value(),
+            -72.02916666666667,
+            epsilon = 1e-9
+        );
         assert_eq!(pos.comment, b"");
     }
 
@@ -123,13 +133,18 @@ mod tests {
     #[test]
     fn with_timestamp_no_messaging() {
         let pos = AprsPosition::parse(b"/074849h4821.61N\\01224.49E^322/103/A=003054").unwrap();
-        assert_eq!(
-            pos.timestamp.unwrap(),
-            Timestamp::Hhmmss(7, 48, 49)
-        );
+        assert_eq!(pos.timestamp.unwrap(), Timestamp::Hhmmss(7, 48, 49));
         assert!(!pos.messaging_supported);
-        assert_relative_eq!(pos.position.latitude.value(), 48.36016666666667, epsilon = 1e-9);
-        assert_relative_eq!(pos.position.longitude.value(), 12.408166666666666, epsilon = 1e-9);
+        assert_relative_eq!(
+            pos.position.latitude.value(),
+            48.36016666666667,
+            epsilon = 1e-9
+        );
+        assert_relative_eq!(
+            pos.position.longitude.value(),
+            12.408166666666666,
+            epsilon = 1e-9
+        );
         assert_eq!(pos.position.symbol.table, '\\');
         assert_eq!(pos.position.symbol.code, '^');
         assert_eq!(pos.comment, b"322/103/A=003054");
@@ -155,7 +170,10 @@ mod tests {
         assert!(pos.extension.is_some());
         assert!(matches!(
             pos.extension.unwrap(),
-            Extension::DirectionSpeed { direction_degrees: 322, speed_knots: 103 }
+            Extension::DirectionSpeed {
+                direction_degrees: 322,
+                speed_knots: 103
+            }
         ));
     }
 
@@ -163,8 +181,16 @@ mod tests {
     fn compressed_no_timestamp() {
         let pos = AprsPosition::parse(b"!/ABCD#$%^- sT").unwrap();
         assert!(pos.timestamp.is_none());
-        assert_relative_eq!(pos.position.latitude.value(), 25.97004667573229, epsilon = 0.001);
-        assert_relative_eq!(pos.position.longitude.value(), -171.95429033460567, epsilon = 0.001);
+        assert_relative_eq!(
+            pos.position.latitude.value(),
+            25.97004667573229,
+            epsilon = 0.001
+        );
+        assert_relative_eq!(
+            pos.position.longitude.value(),
+            -171.95429033460567,
+            epsilon = 0.001
+        );
     }
 
     #[test]

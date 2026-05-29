@@ -15,7 +15,9 @@ use crate::util::parse_bytes;
 pub struct WindDirection(pub u16);
 
 impl WindDirection {
-    pub fn degrees(self) -> u16 { self.0 }
+    pub fn degrees(self) -> u16 {
+        self.0
+    }
 }
 
 /// Wind speed in statute miles per hour (APRS native unit).
@@ -25,10 +27,18 @@ impl WindDirection {
 pub struct WindSpeed(pub u16);
 
 impl WindSpeed {
-    pub fn mph(self) -> u16 { self.0 }
-    pub fn knots(self) -> f32 { self.0 as f32 * 0.868_976 }
-    pub fn kph(self) -> f32 { self.0 as f32 * 1.609_344 }
-    pub fn m_per_s(self) -> f32 { self.0 as f32 * 0.447_04 }
+    pub fn mph(self) -> u16 {
+        self.0
+    }
+    pub fn knots(self) -> f32 {
+        self.0 as f32 * 0.868_976
+    }
+    pub fn kph(self) -> f32 {
+        self.0 as f32 * 1.609_344
+    }
+    pub fn m_per_s(self) -> f32 {
+        self.0 as f32 * 0.447_04
+    }
 }
 
 /// Temperature in degrees Fahrenheit (APRS native unit).
@@ -38,9 +48,15 @@ impl WindSpeed {
 pub struct Temperature(pub i16);
 
 impl Temperature {
-    pub fn fahrenheit(self) -> i16 { self.0 }
-    pub fn celsius(self) -> f32 { (self.0 as f32 - 32.0) * 5.0 / 9.0 }
-    pub fn kelvin(self) -> f32 { self.celsius() + 273.15 }
+    pub fn fahrenheit(self) -> i16 {
+        self.0
+    }
+    pub fn celsius(self) -> f32 {
+        (self.0 as f32 - 32.0) * 5.0 / 9.0
+    }
+    pub fn kelvin(self) -> f32 {
+        self.celsius() + 273.15
+    }
 }
 
 /// Rainfall in hundredths of an inch (APRS native unit).
@@ -50,9 +66,15 @@ impl Temperature {
 pub struct Rainfall(pub u16);
 
 impl Rainfall {
-    pub fn hundredths_inch(self) -> u16 { self.0 }
-    pub fn inches(self) -> f32 { self.0 as f32 / 100.0 }
-    pub fn mm(self) -> f32 { self.inches() * 25.4 }
+    pub fn hundredths_inch(self) -> u16 {
+        self.0
+    }
+    pub fn inches(self) -> f32 {
+        self.0 as f32 / 100.0
+    }
+    pub fn mm(self) -> f32 {
+        self.inches() * 25.4
+    }
 }
 
 /// Relative humidity in percent (0–100; the wire value `00` means 100%).
@@ -62,7 +84,9 @@ impl Rainfall {
 pub struct Humidity(pub u8);
 
 impl Humidity {
-    pub fn percent(self) -> u8 { self.0 }
+    pub fn percent(self) -> u8 {
+        self.0
+    }
 }
 
 /// Barometric pressure in tenths of a millibar (= hundredths of hPa).
@@ -74,9 +98,15 @@ impl Humidity {
 pub struct Pressure(pub u32);
 
 impl Pressure {
-    pub fn tenths_mbar(self) -> u32 { self.0 }
-    pub fn hpa(self) -> f32 { self.0 as f32 / 10.0 }
-    pub fn mbar(self) -> f32 { self.hpa() }
+    pub fn tenths_mbar(self) -> u32 {
+        self.0
+    }
+    pub fn hpa(self) -> f32 {
+        self.0 as f32 / 10.0
+    }
+    pub fn mbar(self) -> f32 {
+        self.hpa()
+    }
 }
 
 /// Solar luminosity in watts per square metre.
@@ -86,7 +116,9 @@ impl Pressure {
 pub struct Luminosity(pub u16);
 
 impl Luminosity {
-    pub fn w_per_m2(self) -> u16 { self.0 }
+    pub fn w_per_m2(self) -> u16 {
+        self.0
+    }
 }
 
 /// Snowfall in tenths of an inch over the last 24 hours.
@@ -96,9 +128,15 @@ impl Luminosity {
 pub struct Snowfall(pub f32);
 
 impl Snowfall {
-    pub fn tenths_inch(self) -> f32 { self.0 }
-    pub fn inches(self) -> f32 { self.0 / 10.0 }
-    pub fn cm(self) -> f32 { self.inches() * 2.54 }
+    pub fn tenths_inch(self) -> f32 {
+        self.0
+    }
+    pub fn inches(self) -> f32 {
+        self.0 / 10.0
+    }
+    pub fn cm(self) -> f32 {
+        self.inches() * 2.54
+    }
 }
 
 // ─── AprsWeatherData ─────────────────────────────────────────────────────────
@@ -147,13 +185,19 @@ impl AprsWeatherData {
     /// Example: `220/004g005t077r000p000P000h50b09900`
     pub fn parse(b: &[u8]) -> Result<Self, AprsError> {
         if b.len() < 7 {
-            return Err(AprsError::TruncatedPacket { expected: 7, got: b.len() });
+            return Err(AprsError::TruncatedPacket {
+                expected: 7,
+                got: b.len(),
+            });
         }
 
         let wind_direction = parse_opt_u16(&b[0..3]).map(WindDirection);
 
         if b[3] != b'/' {
-            return Err(AprsError::TruncatedPacket { expected: 7, got: b.len() });
+            return Err(AprsError::TruncatedPacket {
+                expected: 7,
+                got: b.len(),
+            });
         }
 
         let wind_speed = parse_opt_u16(&b[4..7]).map(WindSpeed);
@@ -174,32 +218,74 @@ impl AprsWeatherData {
             let key = b[i];
             i += 1;
             match key {
-                b'g' => { if i + 3 <= b.len() { wind_gust = parse_opt_u16(&b[i..i+3]).map(WindSpeed); i += 3; } }
-                b't' => { if i + 3 <= b.len() { temperature = parse_opt_i16(&b[i..i+3]).map(Temperature); i += 3; } }
-                b'r' => { if i + 3 <= b.len() { rain_last_hour = parse_opt_u16(&b[i..i+3]).map(Rainfall); i += 3; } }
-                b'p' => { if i + 3 <= b.len() { rain_last_24h = parse_opt_u16(&b[i..i+3]).map(Rainfall); i += 3; } }
-                b'P' => { if i + 3 <= b.len() { rain_since_midnight = parse_opt_u16(&b[i..i+3]).map(Rainfall); i += 3; } }
+                b'g' => {
+                    if i + 3 <= b.len() {
+                        wind_gust = parse_opt_u16(&b[i..i + 3]).map(WindSpeed);
+                        i += 3;
+                    }
+                }
+                b't' => {
+                    if i + 3 <= b.len() {
+                        temperature = parse_opt_i16(&b[i..i + 3]).map(Temperature);
+                        i += 3;
+                    }
+                }
+                b'r' => {
+                    if i + 3 <= b.len() {
+                        rain_last_hour = parse_opt_u16(&b[i..i + 3]).map(Rainfall);
+                        i += 3;
+                    }
+                }
+                b'p' => {
+                    if i + 3 <= b.len() {
+                        rain_last_24h = parse_opt_u16(&b[i..i + 3]).map(Rainfall);
+                        i += 3;
+                    }
+                }
+                b'P' => {
+                    if i + 3 <= b.len() {
+                        rain_since_midnight = parse_opt_u16(&b[i..i + 3]).map(Rainfall);
+                        i += 3;
+                    }
+                }
                 b'h' => {
                     if i + 2 <= b.len() {
-                        humidity = parse_opt_u16(&b[i..i+2]).map(|v| Humidity(if v == 0 { 100 } else { v as u8 }));
+                        humidity = parse_opt_u16(&b[i..i + 2])
+                            .map(|v| Humidity(if v == 0 { 100 } else { v as u8 }));
                         i += 2;
                     }
                 }
                 b'b' => {
                     if i + 5 <= b.len() {
-                        barometric_pressure = parse_bytes::<u32>(&b[i..i+5]).map(Pressure);
+                        barometric_pressure = parse_bytes::<u32>(&b[i..i + 5]).map(Pressure);
                         i += 5;
                     }
                 }
-                b'L' => { if i + 3 <= b.len() { luminosity = parse_opt_u16(&b[i..i+3]).map(|v| Luminosity(v + 1000)); i += 3; } }
-                b'l' => { if i + 3 <= b.len() { luminosity = parse_opt_u16(&b[i..i+3]).map(Luminosity); i += 3; } }
-                b's' => {
+                b'L' => {
                     if i + 3 <= b.len() {
-                        snow_last_24h = parse_opt_u16(&b[i..i+3]).map(|v| Snowfall(v as f32 / 10.0));
+                        luminosity = parse_opt_u16(&b[i..i + 3]).map(|v| Luminosity(v + 1000));
                         i += 3;
                     }
                 }
-                b'#' => { if i + 3 <= b.len() { raw_rain_counter = parse_opt_u16(&b[i..i+3]); i += 3; } }
+                b'l' => {
+                    if i + 3 <= b.len() {
+                        luminosity = parse_opt_u16(&b[i..i + 3]).map(Luminosity);
+                        i += 3;
+                    }
+                }
+                b's' => {
+                    if i + 3 <= b.len() {
+                        snow_last_24h =
+                            parse_opt_u16(&b[i..i + 3]).map(|v| Snowfall(v as f32 / 10.0));
+                        i += 3;
+                    }
+                }
+                b'#' => {
+                    if i + 3 <= b.len() {
+                        raw_rain_counter = parse_opt_u16(&b[i..i + 3]);
+                        i += 3;
+                    }
+                }
                 _ => break, // unknown field — stop here, rest is comment
             }
         }
@@ -224,23 +310,35 @@ impl AprsWeatherData {
     pub fn encode(&self, out: &mut Vec<u8>) {
         match self.wind_direction {
             Some(d) => out.extend_from_slice(format!("{:03}", d.degrees()).as_bytes()),
-            None    => out.extend_from_slice(b"..."),
+            None => out.extend_from_slice(b"..."),
         }
         out.push(b'/');
         match self.wind_speed {
             Some(s) => out.extend_from_slice(format!("{:03}", s.mph()).as_bytes()),
-            None    => out.extend_from_slice(b"..."),
+            None => out.extend_from_slice(b"..."),
         }
-        if let Some(g) = self.wind_gust         { out.extend_from_slice(format!("g{:03}", g.mph()).as_bytes()); }
-        if let Some(t) = self.temperature        { out.extend_from_slice(format!("t{:03}", t.fahrenheit()).as_bytes()); }
-        if let Some(r) = self.rain_last_hour     { out.extend_from_slice(format!("r{:03}", r.hundredths_inch()).as_bytes()); }
-        if let Some(p) = self.rain_last_24h      { out.extend_from_slice(format!("p{:03}", p.hundredths_inch()).as_bytes()); }
-        if let Some(p) = self.rain_since_midnight{ out.extend_from_slice(format!("P{:03}", p.hundredths_inch()).as_bytes()); }
+        if let Some(g) = self.wind_gust {
+            out.extend_from_slice(format!("g{:03}", g.mph()).as_bytes());
+        }
+        if let Some(t) = self.temperature {
+            out.extend_from_slice(format!("t{:03}", t.fahrenheit()).as_bytes());
+        }
+        if let Some(r) = self.rain_last_hour {
+            out.extend_from_slice(format!("r{:03}", r.hundredths_inch()).as_bytes());
+        }
+        if let Some(p) = self.rain_last_24h {
+            out.extend_from_slice(format!("p{:03}", p.hundredths_inch()).as_bytes());
+        }
+        if let Some(p) = self.rain_since_midnight {
+            out.extend_from_slice(format!("P{:03}", p.hundredths_inch()).as_bytes());
+        }
         if let Some(h) = self.humidity {
             let v = if h.percent() == 100 { 0 } else { h.percent() };
             out.extend_from_slice(format!("h{:02}", v).as_bytes());
         }
-        if let Some(b_val) = self.barometric_pressure { out.extend_from_slice(format!("b{:05}", b_val.tenths_mbar()).as_bytes()); }
+        if let Some(b_val) = self.barometric_pressure {
+            out.extend_from_slice(format!("b{:05}", b_val.tenths_mbar()).as_bytes());
+        }
         if let Some(l) = self.luminosity {
             if l.w_per_m2() >= 1000 {
                 out.extend_from_slice(format!("L{:03}", l.w_per_m2() - 1000).as_bytes());
@@ -248,8 +346,12 @@ impl AprsWeatherData {
                 out.extend_from_slice(format!("l{:03}", l.w_per_m2()).as_bytes());
             }
         }
-        if let Some(s) = self.snow_last_24h { out.extend_from_slice(format!("s{:03}", (s.tenths_inch() * 10.0) as u16).as_bytes()); }
-        if let Some(r) = self.raw_rain_counter { out.extend_from_slice(format!("#{:03}", r).as_bytes()); }
+        if let Some(s) = self.snow_last_24h {
+            out.extend_from_slice(format!("s{:03}", (s.tenths_inch() * 10.0) as u16).as_bytes());
+        }
+        if let Some(r) = self.raw_rain_counter {
+            out.extend_from_slice(format!("#{:03}", r).as_bytes());
+        }
     }
 }
 
@@ -274,12 +376,19 @@ impl AprsPositionlessWeather {
     pub(crate) fn parse(info: &[u8]) -> Result<Self, AprsError> {
         // info[0] = '_', info[1..9] = MMDDHHMM (8 bytes), info[9..] = weather data
         if info.len() < 9 {
-            return Err(AprsError::TruncatedPacket { expected: 9, got: info.len() });
+            return Err(AprsError::TruncatedPacket {
+                expected: 9,
+                got: info.len(),
+            });
         }
         let timestamp = info[1..9].to_vec();
         let weather_bytes = &info[9..];
         let weather = AprsWeatherData::parse(weather_bytes)?;
-        Ok(Self { timestamp, weather, comment: vec![] })
+        Ok(Self {
+            timestamp,
+            weather,
+            comment: vec![],
+        })
     }
 
     pub fn encode(&self) -> Vec<u8> {

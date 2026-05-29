@@ -43,7 +43,11 @@ pub struct CompressionType {
 
 impl From<u8> for CompressionType {
     fn from(b: u8) -> Self {
-        let gps_fix = if b & (1 << 5) != 0 { GpsFix::Current } else { GpsFix::Old };
+        let gps_fix = if b & (1 << 5) != 0 {
+            GpsFix::Current
+        } else {
+            GpsFix::Old
+        };
         let nmea_source = match (b & (1 << 4) != 0, b & (1 << 3) != 0) {
             (false, false) => NmeaSource::Other,
             (false, true) => NmeaSource::Gll,
@@ -60,7 +64,11 @@ impl From<u8> for CompressionType {
             (true, true, false) => Origin::Other,
             (true, true, true) => Origin::Digipeater,
         };
-        Self { gps_fix, nmea_source, origin }
+        Self {
+            gps_fix,
+            nmea_source,
+            origin,
+        }
     }
 }
 
@@ -103,7 +111,10 @@ pub struct CourseSpeed {
 
 impl CourseSpeed {
     pub fn new(course_degrees: u16, speed_knots: f64) -> Self {
-        Self { course_degrees, speed_knots }
+        Self {
+            course_degrees,
+            speed_knots,
+        }
     }
 
     pub(crate) fn from_cs(c: u8, s: u8) -> Self {
@@ -134,7 +145,9 @@ impl RadioRange {
     }
 
     pub(crate) fn from_s(s: u8) -> Self {
-        Self { range_miles: 2.0 * 1.08_f64.powi(s as i32) }
+        Self {
+            range_miles: 2.0 * 1.08_f64.powi(s as i32),
+        }
     }
 
     pub(crate) fn to_s(self) -> u8 {
@@ -160,7 +173,9 @@ impl CompressedAltitude {
     }
 
     pub(crate) fn from_cs(c: u8, s: u8) -> Self {
-        Self { feet: 1.002_f64.powi(c as i32 * 91 + s as i32) }
+        Self {
+            feet: 1.002_f64.powi(c as i32 * 91 + s as i32),
+        }
     }
 
     pub(crate) fn to_cs(self) -> (u8, u8) {
@@ -207,7 +222,7 @@ impl CompressedCs {
         // (seen in null-position packets that use '@' or space placeholders), fall
         // back to None rather than rejecting the whole packet.
         if c == b' ' {
-            let t_val = t_raw.checked_sub(33).unwrap_or(0);
+            let t_val = t_raw.saturating_sub(33);
             return Ok(CompressedCs::None(CompressionType::from(t_val)));
         }
         let c_val = match base91_decode1(c) {
@@ -218,7 +233,7 @@ impl CompressedCs {
             Some(v) => v,
             None => return Ok(CompressedCs::None(CompressionType::from(0))),
         };
-        let t = CompressionType::from(t_raw.checked_sub(33).unwrap_or(0));
+        let t = CompressionType::from(t_raw.saturating_sub(33));
 
         let cs = if t.nmea_source == NmeaSource::Gga {
             CompressedCs::Altitude(CompressedAltitude::from_cs(c_val, s_val), t)

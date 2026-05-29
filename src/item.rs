@@ -28,7 +28,9 @@ impl AprsItem {
         //         )NAME... latSymlonSymComment   (killed)
         // NAME is 3-9 chars, terminated by `!` (live) or ` ` (killed)
         if info.len() < 5 {
-            return Err(AprsError::InvalidItem { detail: "packet too short" });
+            return Err(AprsError::InvalidItem {
+                detail: "packet too short",
+            });
         }
 
         // Collect name bytes (starting at index 1, after `)`)
@@ -44,20 +46,28 @@ impl AprsItem {
         }
 
         if name.len() < 3 {
-            return Err(AprsError::InvalidItem { detail: "name too short (< 3 chars)" });
+            return Err(AprsError::InvalidItem {
+                detail: "name too short (< 3 chars)",
+            });
         }
 
-        let liveness_idx =
-            liveness_idx.ok_or(AprsError::InvalidItem { detail: "liveness byte not found" })?;
+        let liveness_idx = liveness_idx.ok_or(AprsError::InvalidItem {
+            detail: "liveness byte not found",
+        })?;
 
         let live = match info[liveness_idx] {
             b'!' => true,
             b' ' | b'_' => false,
-            _ => return Err(AprsError::InvalidItem { detail: "invalid liveness byte" }),
+            _ => {
+                return Err(AprsError::InvalidItem {
+                    detail: "invalid liveness byte",
+                });
+            }
         };
 
-        let position_bytes = info.get(liveness_idx + 1..)
-            .ok_or(AprsError::InvalidItem { detail: "truncated after liveness" })?;
+        let position_bytes = info.get(liveness_idx + 1..).ok_or(AprsError::InvalidItem {
+            detail: "truncated after liveness",
+        })?;
 
         let (remaining, position) = Position::parse(position_bytes)?;
         let comment_raw = remaining.unwrap_or_default();
@@ -72,7 +82,13 @@ impl AprsItem {
             (None, comment_raw.to_vec())
         };
 
-        Ok(Self { name, live, position, extension, comment })
+        Ok(Self {
+            name,
+            live,
+            position,
+            extension,
+            comment,
+        })
     }
 
     pub fn encode(&self) -> Vec<u8> {
@@ -104,8 +120,16 @@ mod tests {
         let item = AprsItem::parse(b")AIDV#2!4903.50N/07201.75WA").unwrap();
         assert_eq!(item.name, b"AIDV#2");
         assert!(item.live);
-        assert_relative_eq!(item.position.latitude.value(), 49.05833333333333, epsilon = 1e-9);
-        assert_relative_eq!(item.position.longitude.value(), -72.02916666666667, epsilon = 1e-9);
+        assert_relative_eq!(
+            item.position.latitude.value(),
+            49.05833333333333,
+            epsilon = 1e-9
+        );
+        assert_relative_eq!(
+            item.position.longitude.value(),
+            -72.02916666666667,
+            epsilon = 1e-9
+        );
         assert_eq!(item.position.symbol.table, '/');
         assert_eq!(item.position.symbol.code, 'A');
     }

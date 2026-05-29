@@ -15,7 +15,9 @@ pub struct AprsCapabilities {
 impl AprsCapabilities {
     /// Decode from the information field (including the leading `<` DTI byte).
     pub(crate) fn parse(info: &[u8]) -> Self {
-        Self { raw: info.get(1..).unwrap_or_default().to_vec() }
+        Self {
+            raw: info.get(1..).unwrap_or_default().to_vec(),
+        }
     }
 
     pub fn encode(&self) -> Vec<u8> {

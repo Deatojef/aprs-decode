@@ -29,9 +29,15 @@ fn position_report() {
         let lat = pos.position.latitude.value();
         let lon = pos.position.longitude.value();
         let sym = &pos.position.symbol;
-        println!("            lat={lat:.4}  lon={lon:.4}  symbol={}/{}", sym.table, sym.code);
+        println!(
+            "            lat={lat:.4}  lon={lon:.4}  symbol={}/{}",
+            sym.table, sym.code
+        );
         if !pos.comment.is_empty() {
-            println!("            comment={}", String::from_utf8_lossy(&pos.comment));
+            println!(
+                "            comment={}",
+                String::from_utf8_lossy(&pos.comment)
+            );
         }
     }
 }
@@ -55,7 +61,11 @@ fn status_packet() {
     let pkt = AprsPacket::decode_textual(raw).expect("valid status packet");
 
     if let AprsData::Status(s) = &pkt.data {
-        println!("[status]    {} says: {}", pkt.from, String::from_utf8_lossy(&s.comment));
+        println!(
+            "[status]    {} says: {}",
+            pkt.from,
+            String::from_utf8_lossy(&s.comment)
+        );
     }
 }
 
@@ -68,7 +78,9 @@ fn mic_e() {
 
     if let AprsData::MicE(m) = &pkt.data {
         print!("[mic-e]     {} -> {}", pkt.from, pkt.to);
-        for digi in &pkt.via { print!(",{digi}"); }
+        for digi in &pkt.via {
+            print!(",{digi}");
+        }
         println!();
         println!(
             "            lat={:.4}  lon={:.4}  speed={}kts  course={}°  msg={:?}",
@@ -85,21 +97,27 @@ fn mic_e() {
             println!("            device={} {}", dev.manufacturer, dev.model);
         }
         if !m.comment.is_empty() {
-            println!("            comment={}", String::from_utf8_lossy(&m.comment));
+            println!(
+                "            comment={}",
+                String::from_utf8_lossy(&m.comment)
+            );
         }
     }
 }
 
 fn timestamped_position() {
     // Real packet from K5KTI-1: position report with a zulu timestamp.
-    let raw = b"K5KTI-1>APMI06,WIDE2-2:@282245z3854.24N/10445.93W-WX3in1Plus2.0 U=13.9V,T=??.?C/??.?F";
+    let raw =
+        b"K5KTI-1>APMI06,WIDE2-2:@282245z3854.24N/10445.93W-WX3in1Plus2.0 U=13.9V,T=??.?C/??.?F";
     let pkt = AprsPacket::decode_textual(raw).expect("valid timestamped position");
 
     if let AprsData::Position(pos) = &pkt.data {
         let lat = pos.position.latitude.value();
         let lon = pos.position.longitude.value();
         print!("[position]  {} -> {}", pkt.from, pkt.to);
-        for digi in &pkt.via { print!(",{digi}"); }
+        for digi in &pkt.via {
+            print!(",{digi}");
+        }
         println!();
         print!("            lat={lat:.4}  lon={lon:.4}");
         if let Some(ts) = &pos.timestamp {
@@ -107,7 +125,10 @@ fn timestamped_position() {
         }
         println!();
         if !pos.comment.is_empty() {
-            println!("            comment={}", String::from_utf8_lossy(&pos.comment));
+            println!(
+                "            comment={}",
+                String::from_utf8_lossy(&pos.comment)
+            );
         }
     }
 }
@@ -119,14 +140,21 @@ fn telemetry() {
 
     if let AprsData::Telemetry(t) = &pkt.data {
         print!("[telemetry] {} -> {}", pkt.from, pkt.to);
-        for digi in &pkt.via { print!(",{digi}"); }
+        for digi in &pkt.via {
+            print!(",{digi}");
+        }
         println!();
-        print!("            seq={}  analog=", String::from_utf8_lossy(&t.sequence));
+        print!(
+            "            seq={}  analog=",
+            String::from_utf8_lossy(&t.sequence)
+        );
         for (i, ch) in t.analog.iter().enumerate() {
-            if i > 0 { print!(","); }
+            if i > 0 {
+                print!(",");
+            }
             match ch {
                 Some(v) => print!("{v}"),
-                None    => print!("-"),
+                None => print!("-"),
             }
         }
         println!("  digital={:08b}", t.digital);

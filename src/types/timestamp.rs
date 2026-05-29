@@ -41,7 +41,11 @@ impl Timestamp {
                 validate_hhmmss(f1, f2, f3, b)?;
                 Ok(Timestamp::Hhmmss(f1, f2, f3))
             }
-            _ => Err(AprsError::InvalidTimestampFormat { raw: b.to_vec() }),
+            // Some trackers (e.g. certain MFJ/APMI firmwares) emit a non-standard
+            // designator such as `#` in the 7th byte. The `@`/`/` DTI guarantees the
+            // first 7 bytes are the timestamp field, so preserve the raw bytes rather
+            // than failing the whole packet — the position that follows is well-formed.
+            _ => Ok(Timestamp::Unsupported(b.to_vec())),
         }
     }
 
@@ -113,6 +117,17 @@ mod tests {
             Timestamp::parse(b"092345/").unwrap(),
             Timestamp::Unsupported(_)
         ));
+    }
+
+    #[test]
+    fn parse_nonstandard_designator_preserved() {
+        // A `#` designator (seen from some trackers) is preserved raw rather than
+        // failing, so the well-formed position that follows can still be parsed.
+        let ts = Timestamp::parse(b"291500#").unwrap();
+        assert!(matches!(ts, Timestamp::Unsupported(_)));
+        let mut out = Vec::new();
+        ts.encode(&mut out);
+        assert_eq!(out, b"291500#");
     }
 
     #[test]

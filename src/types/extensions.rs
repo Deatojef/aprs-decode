@@ -12,8 +12,12 @@ pub enum Directivity {
 
 impl Directivity {
     fn from_digit(d: u8) -> Option<Self> {
-        if d == 0 { return Some(Directivity::Omni); }
-        if d < 9 { return Some(Directivity::Degrees(d as u16 * 45)); }
+        if d == 0 {
+            return Some(Directivity::Omni);
+        }
+        if d < 9 {
+            return Some(Directivity::Degrees(d as u16 * 45));
+        }
         None
     }
 
@@ -46,9 +50,7 @@ pub enum Extension {
         directivity: Directivity,
     },
     /// Pre-calculated radio range. Format: `RNGrrrr`.
-    Rng {
-        range_miles: u16,
-    },
+    Rng { range_miles: u16 },
     /// DF Strength-Height-Gain-Directivity. Format: `DFSshgd`.
     Dfs {
         s_points: u8,
@@ -68,7 +70,8 @@ impl Extension {
         let b = &data[..7];
 
         // Course/Speed: `DDD/SSS` — three digits, slash, three digits
-        if b[3] == b'/' && b[..3].iter().all(|c| c.is_ascii_digit())
+        if b[3] == b'/'
+            && b[..3].iter().all(|c| c.is_ascii_digit())
             && b[4..7].iter().all(|c| c.is_ascii_digit())
         {
             let dir: u16 = parse_bytes(&b[0..3])?;
@@ -81,7 +84,12 @@ impl Extension {
         }
 
         // PHG: `PHGphgd`
-        if b.starts_with(b"PHG") && b[3].is_ascii_digit() && b[5].is_ascii_digit() && b[6].is_ascii_digit() {
+        if b.starts_with(b"PHG")
+            && b[3].is_ascii_digit()
+            && b[4].is_ascii_digit()
+            && b[5].is_ascii_digit()
+            && b[6].is_ascii_digit()
+        {
             let p = b[3] - b'0';
             let h = b[4]; // encoded as ASCII
             let g = b[5] - b'0';
@@ -104,7 +112,12 @@ impl Extension {
         }
 
         // DFS: `DFSshgd`
-        if b.starts_with(b"DFS") && b[3].is_ascii_digit() && b[5].is_ascii_digit() && b[6].is_ascii_digit() {
+        if b.starts_with(b"DFS")
+            && b[3].is_ascii_digit()
+            && b[4].is_ascii_digit()
+            && b[5].is_ascii_digit()
+            && b[6].is_ascii_digit()
+        {
             let s = b[3] - b'0';
             let h = b[4];
             let g = b[5] - b'0';
@@ -125,12 +138,20 @@ impl Extension {
     /// Encode the extension field as exactly 7 bytes into `out`.
     pub fn encode(&self, out: &mut Vec<u8>) {
         match self {
-            Extension::DirectionSpeed { direction_degrees, speed_knots } => {
+            Extension::DirectionSpeed {
+                direction_degrees,
+                speed_knots,
+            } => {
                 out.extend_from_slice(
-                    format!("{:03}/{:03}", direction_degrees, speed_knots).as_bytes()
+                    format!("{:03}/{:03}", direction_degrees, speed_knots).as_bytes(),
                 );
             }
-            Extension::Phg { power_watts, antenna_height_feet, antenna_gain_db, directivity } => {
+            Extension::Phg {
+                power_watts,
+                antenna_height_feet,
+                antenna_gain_db,
+                directivity,
+            } => {
                 let p = (*power_watts as f64).sqrt() as u8;
                 let h_log = if *antenna_height_feet >= 10 {
                     ((*antenna_height_feet / 10) as f64).log2() as u8 + 48
@@ -146,7 +167,12 @@ impl Extension {
             Extension::Rng { range_miles } => {
                 out.extend_from_slice(format!("RNG{:04}", range_miles).as_bytes());
             }
-            Extension::Dfs { s_points, antenna_height_feet, antenna_gain_db, directivity } => {
+            Extension::Dfs {
+                s_points,
+                antenna_height_feet,
+                antenna_gain_db,
+                directivity,
+            } => {
                 let h_log = if *antenna_height_feet >= 10 {
                     ((*antenna_height_feet / 10) as f64).log2() as u8 + 48
                 } else {
@@ -174,12 +200,21 @@ mod tests {
     #[test]
     fn direction_speed() {
         let ext = Extension::parse(b"322/103").unwrap();
-        assert!(matches!(ext, Extension::DirectionSpeed { direction_degrees: 322, speed_knots: 103 }));
+        assert!(matches!(
+            ext,
+            Extension::DirectionSpeed {
+                direction_degrees: 322,
+                speed_knots: 103
+            }
+        ));
     }
 
     #[test]
     fn direction_speed_encode_round_trip() {
-        let ext = Extension::DirectionSpeed { direction_degrees: 322, speed_knots: 103 };
+        let ext = Extension::DirectionSpeed {
+            direction_degrees: 322,
+            speed_knots: 103,
+        };
         let mut out = Vec::new();
         ext.encode(&mut out);
         assert_eq!(out, b"322/103");
@@ -195,5 +230,36 @@ mod tests {
     #[test]
     fn too_short_returns_none() {
         assert!(Extension::parse(b"12/1").is_none());
+    }
+
+    #[test]
+    fn phg_valid() {
+        let ext = Extension::parse(b"PHG5132").unwrap();
+        assert!(matches!(ext, Extension::Phg { .. }));
+    }
+
+    #[test]
+    fn phg_nondigit_height_returns_none() {
+        // `z` in the height position previously caused a shift-left overflow panic.
+        // It must now be rejected cleanly.
+        assert!(Extension::parse(b"PHG0z00").is_none());
+    }
+
+    #[test]
+    fn dfs_nondigit_height_returns_none() {
+        assert!(Extension::parse(b"DFS0z00").is_none());
+    }
+
+    #[test]
+    fn phg_max_digit_height_no_panic() {
+        // Height digit 9 is the largest valid value (10 * 2^9 = 5120 ft).
+        let ext = Extension::parse(b"PHG0900").unwrap();
+        assert!(matches!(
+            ext,
+            Extension::Phg {
+                antenna_height_feet: 5120,
+                ..
+            }
+        ));
     }
 }

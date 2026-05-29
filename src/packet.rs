@@ -17,7 +17,7 @@ use crate::user_defined::AprsUserDefined;
 use crate::weather::AprsPositionlessWeather;
 
 /// A fully decoded APRS packet.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AprsPacket {
     /// The source station (transmitter).
@@ -33,7 +33,7 @@ pub struct AprsPacket {
 /// The content of an APRS packet, dispatched by Data Type Indicator (DTI).
 ///
 /// The DTI is the first byte of the AX.25 information field.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum AprsData {
@@ -68,10 +68,7 @@ pub enum AprsData {
 
     /// Packet type not yet implemented or not recognized.
     /// Preserves the DTI byte and the raw information field for caller inspection.
-    Unknown {
-        dti: u8,
-        data: Vec<u8>,
-    },
+    Unknown { dti: u8, data: Vec<u8> },
 }
 
 impl AprsPacket {
@@ -86,13 +83,17 @@ impl AprsPacket {
             return Err(AprsError::EmptyPacket);
         }
 
-        let colon = input.iter().position(|&b| b == b':')
+        let colon = input
+            .iter()
+            .position(|&b| b == b':')
             .ok_or(AprsError::MissingInfoDelimiter)?;
 
         let header = &input[..colon];
         let info = &input[colon + 1..];
 
-        let arrow = header.iter().position(|&b| b == b'>')
+        let arrow = header
+            .iter()
+            .position(|&b| b == b'>')
             .ok_or(AprsError::MissingDestinationDelimiter)?;
 
         let from_bytes = &header[..arrow];
@@ -109,7 +110,12 @@ impl AprsPacket {
         let via = parse_via(via_bytes)?;
         let data = dispatch_data(info, &to)?;
 
-        Ok(AprsPacket { from, to, via, data })
+        Ok(AprsPacket {
+            from,
+            to,
+            via,
+            data,
+        })
     }
 
     /// Decode a raw AX.25 UI frame.
@@ -137,7 +143,9 @@ impl AprsPacket {
                 let heard = input[pos + 6] & 0x80 != 0;
                 via.push(Digipeater::Callsign(digi_call, heard));
                 pos += 7;
-                if eoa { break; }
+                if eoa {
+                    break;
+                }
                 if pos >= input.len() {
                     return Err(AprsError::Ax25MissingEoa);
                 }
@@ -145,7 +153,10 @@ impl AprsPacket {
         }
 
         if pos >= input.len() {
-            return Err(AprsError::TruncatedPacket { expected: pos + 2, got: input.len() });
+            return Err(AprsError::TruncatedPacket {
+                expected: pos + 2,
+                got: input.len(),
+            });
         }
         if input[pos] != 0x03 {
             return Err(AprsError::Ax25NotUiFrame { byte: input[pos] });
@@ -153,7 +164,10 @@ impl AprsPacket {
         pos += 1;
 
         if pos >= input.len() {
-            return Err(AprsError::TruncatedPacket { expected: pos + 1, got: input.len() });
+            return Err(AprsError::TruncatedPacket {
+                expected: pos + 1,
+                got: input.len(),
+            });
         }
         if input[pos] != 0xF0 {
             return Err(AprsError::Ax25NotAprsPid { byte: input[pos] });
@@ -163,7 +177,12 @@ impl AprsPacket {
         let info = &input[pos..];
         let data = dispatch_data(info, &to)?;
 
-        Ok(AprsPacket { from, to, via, data })
+        Ok(AprsPacket {
+            from,
+            to,
+            via,
+            data,
+        })
     }
 
     /// Encode this packet to textual APRS-IS format.
@@ -193,8 +212,13 @@ impl AprsPacket {
         for (i, digi) in self.via.iter().enumerate() {
             let is_last = i + 1 == self.via.len();
             match digi {
-                Digipeater::Callsign(call, _heard) => {
+                Digipeater::Callsign(call, heard) => {
                     call.encode_ax25(&mut out, is_last);
+                    // Restore the "has-been-repeated" H-bit (bit 7 of the SSID byte)
+                    // so a heard digipeater (`*`) round-trips through AX.25.
+                    if *heard && let Some(last) = out.last_mut() {
+                        *last |= 0x80;
+                    }
                 }
                 Digipeater::QConstruct(_, gw) => {
                     gw.encode_ax25(&mut out, is_last);
@@ -264,25 +288,35 @@ impl AprsPacket {
 fn dispatch_data(info: &[u8], to: &Callsign) -> Result<AprsData, AprsError> {
     let dti = match info.first() {
         Some(&b) => b,
-        None => return Ok(AprsData::Unknown { dti: 0, data: Vec::new() }),
+        None => {
+            return Ok(AprsData::Unknown {
+                dti: 0,
+                data: Vec::new(),
+            });
+        }
     };
 
     match dti {
         b'!' | b'=' | b'/' | b'@' => AprsPosition::parse(info).map(AprsData::Position),
-        b':'                       => AprsMessage::parse(info).map(AprsData::Message),
-        b'>'                       => AprsStatus::parse(info).map(AprsData::Status),
+        b':' => AprsMessage::parse(info).map(AprsData::Message),
+        b'>' => AprsStatus::parse(info).map(AprsData::Status),
         b'`' | b'\'' | 0x1C | 0x1D => AprsMicE::parse(info, to).map(AprsData::MicE),
-        b';'                       => AprsObject::parse(info).map(AprsData::Object),
-        b')'                       => AprsItem::parse(info).map(AprsData::Item),
-        b'_'                       => AprsPositionlessWeather::parse(info).map(AprsData::Weather),
-        b'T'                       => AprsTelemetry::parse(info).map(AprsData::Telemetry),
-        b'<'                       => Ok(AprsData::Capabilities(AprsCapabilities::parse(info))),
-        b'?'                       => Ok(AprsData::Query(AprsQuery::parse(info))),
-        b'['                       => AprsGridLocator::parse(info).map(AprsData::GridLocator),
-        b'$'                       => Ok(AprsData::Nmea(AprsNmea::parse(info))),
-        b'}'                       => AprsThirdParty::parse(info).map(AprsData::ThirdParty),
-        b'{'                       => Ok(AprsData::UserDefined(AprsUserDefined::parse(info))),
-        _ => Ok(AprsData::Unknown { dti, data: info.to_vec() }),
+        b';' => AprsObject::parse(info).map(AprsData::Object),
+        b')' => AprsItem::parse(info).map(AprsData::Item),
+        b'_' => AprsPositionlessWeather::parse(info).map(AprsData::Weather),
+        // `T` is telemetry only when followed by `#`; otherwise preserve as Unknown
+        // rather than failing the whole packet.
+        b'T' if info.get(1) == Some(&b'#') => AprsTelemetry::parse(info).map(AprsData::Telemetry),
+        b'<' => Ok(AprsData::Capabilities(AprsCapabilities::parse(info))),
+        b'?' => Ok(AprsData::Query(AprsQuery::parse(info))),
+        b'[' => AprsGridLocator::parse(info).map(AprsData::GridLocator),
+        b'$' => Ok(AprsData::Nmea(AprsNmea::parse(info))),
+        b'}' => AprsThirdParty::parse(info).map(AprsData::ThirdParty),
+        b'{' => Ok(AprsData::UserDefined(AprsUserDefined::parse(info))),
+        _ => Ok(AprsData::Unknown {
+            dti,
+            data: info.to_vec(),
+        }),
     }
 }
 
@@ -290,11 +324,9 @@ fn dispatch_data(info: &[u8], to: &Callsign) -> Result<AprsData, AprsError> {
 mod tests {
     use super::*;
 
-    const POSITION_PACKET: &[u8] =
-        b"W1AW-9>APRS,WIDE1-1,WIDE2-2:!4903.50N/07201.75W-Test";
+    const POSITION_PACKET: &[u8] = b"W1AW-9>APRS,WIDE1-1,WIDE2-2:!4903.50N/07201.75W-Test";
 
-    const MSG_PACKET: &[u8] =
-        b"KD9ABC>APDR15,qAR,KD9XYZ::W1AW-9   :Hello world{001";
+    const MSG_PACKET: &[u8] = b"KD9ABC>APDR15,qAR,KD9XYZ::W1AW-9   :Hello world{001";
 
     #[test]
     fn decode_position_full() {
@@ -349,6 +381,23 @@ mod tests {
     }
 
     #[test]
+    fn telemetry_data_dispatched() {
+        let pkt = AprsPacket::decode_textual(b"W1AW>APRS:T#005,10,20,30,40,50,10101010").unwrap();
+        assert!(matches!(pkt.data, AprsData::Telemetry(_)));
+    }
+
+    #[test]
+    fn t_without_hash_is_unknown() {
+        // A `T`-prefixed info field that isn't `T#...` must not fail the packet;
+        // it falls back to Unknown.
+        let pkt = AprsPacket::decode_textual(b"W1AW>APRS:Tno hash here").unwrap();
+        match &pkt.data {
+            AprsData::Unknown { dti, .. } => assert_eq!(*dti, b'T'),
+            other => panic!("expected Unknown, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn encode_textual_round_trip() {
         let pkt = AprsPacket::decode_textual(POSITION_PACKET).unwrap();
         let encoded = pkt.encode_textual().unwrap();
@@ -362,6 +411,20 @@ mod tests {
         let decoded = AprsPacket::decode_ax25(&ax25).unwrap();
         assert_eq!(decoded.from.to_string(), "W1AW-9");
         assert_eq!(decoded.to.to_string(), "APRS");
+    }
+
+    #[test]
+    fn ax25_struct_round_trip_preserves_heard_bit() {
+        // A digipeated packet: WIDE1-1 has been heard (`*`). The H-bit must survive
+        // an AX.25 encode→decode cycle so the structures compare equal.
+        let pkt =
+            AprsPacket::decode_textual(b"W1AW-9>APRS,W0OOD-2*,WIDE1-1:!4903.50N/07201.75W-Test")
+                .unwrap();
+        let ax25 = pkt.encode_ax25().unwrap();
+        let redecoded = AprsPacket::decode_ax25(&ax25).unwrap();
+        assert_eq!(pkt, redecoded);
+        assert!(matches!(redecoded.via[0], Digipeater::Callsign(_, true)));
+        assert!(matches!(redecoded.via[1], Digipeater::Callsign(_, false)));
     }
 
     // Real-world packet using all-'@' compressed null-position and space csT bytes.

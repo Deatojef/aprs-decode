@@ -57,7 +57,6 @@ impl Precision {
     }
 }
 
-
 /// APRS latitude value in decimal degrees (positive = North, negative = South).
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -86,14 +85,24 @@ impl Latitude {
 
     /// Decompose into (degrees, whole minutes, hundredths-of-minute, is_north).
     pub fn dmh(self) -> (u32, u32, u32, bool) {
-        let (is_north, v) = if self.0 >= 0.0 { (true, self.0) } else { (false, -self.0) };
+        let (is_north, v) = if self.0 >= 0.0 {
+            (true, self.0)
+        } else {
+            (false, -self.0)
+        };
         let deg = v as u32;
         let min = ((v - deg as f64) * 60.0) as u32;
         let mut hdths = ((v - deg as f64 - min as f64 / 60.0) * 6000.0).round() as u32;
         let mut min = min;
         let mut deg = deg;
-        if hdths >= 100 { hdths = 0; min += 1; }
-        if min >= 60 { min = 0; deg += 1; }
+        if hdths >= 100 {
+            hdths = 0;
+            min += 1;
+        }
+        if min >= 60 {
+            min = 0;
+            deg += 1;
+        }
         (deg, min, hdths, is_north)
     }
 
@@ -119,15 +128,15 @@ impl Latitude {
             .ok_or_else(|| AprsError::InvalidLatitude { raw: b.to_vec() })?;
         let value = deg as f64 + min as f64 / 60.0 + hdths as f64 / 6000.0;
         let value = if is_north { value } else { -value };
-        let lat = Latitude::new(value)
-            .ok_or_else(|| AprsError::InvalidLatitude { raw: b.to_vec() })?;
+        let lat =
+            Latitude::new(value).ok_or_else(|| AprsError::InvalidLatitude { raw: b.to_vec() })?;
         Ok((lat, precision))
     }
 
     /// Parse 4-byte base-91 compressed latitude.
     pub(crate) fn parse_compressed(b: &[u8]) -> Result<Self, AprsError> {
-        let enc = base91_decode4(b)
-            .ok_or_else(|| AprsError::InvalidLatitude { raw: b.to_vec() })?;
+        let enc =
+            base91_decode4(b).ok_or_else(|| AprsError::InvalidLatitude { raw: b.to_vec() })?;
         let value = 90.0 - enc / 380926.0;
         Latitude::new(value).ok_or_else(|| AprsError::InvalidLatitude { raw: b.to_vec() })
     }
@@ -182,14 +191,24 @@ impl Longitude {
 
     /// Decompose into (degrees, whole minutes, hundredths-of-minute, is_east).
     pub fn dmh(self) -> (u32, u32, u32, bool) {
-        let (is_east, v) = if self.0 >= 0.0 { (true, self.0) } else { (false, -self.0) };
+        let (is_east, v) = if self.0 >= 0.0 {
+            (true, self.0)
+        } else {
+            (false, -self.0)
+        };
         let deg = v as u32;
         let min = ((v - deg as f64) * 60.0) as u32;
         let mut hdths = ((v - deg as f64 - min as f64 / 60.0) * 6000.0).round() as u32;
         let mut min = min;
         let mut deg = deg;
-        if hdths >= 100 { hdths = 0; min += 1; }
-        if min >= 60 { min = 0; deg += 1; }
+        if hdths >= 100 {
+            hdths = 0;
+            min += 1;
+        }
+        if min >= 60 {
+            min = 0;
+            deg += 1;
+        }
         (deg, min, hdths, is_east)
     }
 
@@ -226,8 +245,8 @@ impl Longitude {
 
     /// Parse 4-byte base-91 compressed longitude.
     pub(crate) fn parse_compressed(b: &[u8]) -> Result<Self, AprsError> {
-        let enc = base91_decode4(b)
-            .ok_or_else(|| AprsError::InvalidLongitude { raw: b.to_vec() })?;
+        let enc =
+            base91_decode4(b).ok_or_else(|| AprsError::InvalidLongitude { raw: b.to_vec() })?;
         let value = enc / 190463.0 - 180.0;
         Longitude::new(value).ok_or_else(|| AprsError::InvalidLongitude { raw: b.to_vec() })
     }
@@ -235,7 +254,9 @@ impl Longitude {
     pub(crate) fn encode_uncompressed(&self, out: &mut Vec<u8>) {
         let (deg, min, hdths, is_east) = self.dmh();
         let dir = if is_east { b'E' } else { b'W' };
-        out.extend_from_slice(format!("{:03}{:02}.{:02}{}", deg, min, hdths, dir as char).as_bytes());
+        out.extend_from_slice(
+            format!("{:03}{:02}.{:02}{}", deg, min, hdths, dir as char).as_bytes(),
+        );
     }
 
     pub(crate) fn encode_compressed(&self, out: &mut Vec<u8>) {
@@ -247,11 +268,15 @@ impl Longitude {
 // --- base-91 helpers (APRS standard: char 33..=123) ---
 
 pub(crate) fn base91_decode4(b: &[u8]) -> Option<f64> {
-    if b.len() < 4 { return None; }
+    if b.len() < 4 {
+        return None;
+    }
     let mut val = 0.0f64;
     for &byte in &b[..4] {
         let d = byte.checked_sub(33)?;
-        if d > 90 { return None; }
+        if d > 90 {
+            return None;
+        }
         val = val * 91.0 + d as f64;
     }
     Some(val)
@@ -295,7 +320,9 @@ fn parse_pair_ambiguous(b: &[u8; 2], must_be_spaces: bool) -> Option<(u32, u8)> 
 /// Format `(deg, min, hdths)` into a 6-byte ASCII digit array without the decimal point.
 fn write_digits_6(buf: &mut [u8; 6], deg: u32, min: u32, hdths: u32) -> Option<()> {
     let s = format!("{:02}{:02}{:02}", deg, min, hdths);
-    if s.len() != 6 { return None; }
+    if s.len() != 6 {
+        return None;
+    }
     buf.copy_from_slice(s.as_bytes());
     Some(())
 }

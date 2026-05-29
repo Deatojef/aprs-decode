@@ -26,7 +26,8 @@ pub(crate) fn extract_frequency_mhz(comment: &[u8]) -> Option<f32> {
     // Walk back to the start of the number (digits and `.`)
     let num_bytes = &comment[..mhz_pos];
     // Ensure the number is at the very start (optionally preceded by whitespace)
-    let trimmed = num_bytes.iter()
+    let trimmed = num_bytes
+        .iter()
         .position(|&b| b != b' ')
         .map(|i| &num_bytes[i..])
         .unwrap_or(num_bytes);
@@ -46,7 +47,10 @@ mod tests {
 
     #[test]
     fn frequency_basic() {
-        assert_eq!(extract_frequency_mhz(b"146.520MHz T100 comment"), Some(146.52));
+        assert_eq!(
+            extract_frequency_mhz(b"146.520MHz T100 comment"),
+            Some(146.52)
+        );
     }
 
     #[test]

@@ -34,13 +34,20 @@ impl AprsQuery {
 
         let second_q = body.iter().position(|&b| b == b'?');
         let (query_type, after_type) = match second_q {
-            Some(pos) => (body[..pos].to_vec(), body.get(pos + 1..).unwrap_or_default()),
+            Some(pos) => (
+                body[..pos].to_vec(),
+                body.get(pos + 1..).unwrap_or_default(),
+            ),
             None => (body.to_vec(), &b""[..]),
         };
 
         let (footprint, trailing) = parse_footprint(after_type);
 
-        Self { query_type, footprint, trailing }
+        Self {
+            query_type,
+            footprint,
+            trailing,
+        }
     }
 
     pub fn encode(&self) -> Vec<u8> {
@@ -48,7 +55,9 @@ impl AprsQuery {
         out.extend_from_slice(&self.query_type);
         out.push(b'?');
         if let Some(ref fp) = self.footprint {
-            out.extend_from_slice(format!("{},{},{}", fp.latitude, fp.longitude, fp.radius_km).as_bytes());
+            out.extend_from_slice(
+                format!("{},{},{}", fp.latitude, fp.longitude, fp.radius_km).as_bytes(),
+            );
         }
         out.extend_from_slice(&self.trailing);
         out
@@ -66,7 +75,14 @@ fn parse_footprint(b: &[u8]) -> (Option<QueryFootprint>, Vec<u8>) {
         let radius = parse_f32(parts[2]);
         if let (Some(lat), Some(lon), Some(radius)) = (lat, lon, radius) {
             let trailing = parts.get(3).map(|p| p.to_vec()).unwrap_or_default();
-            return (Some(QueryFootprint { latitude: lat, longitude: lon, radius_km: radius }), trailing);
+            return (
+                Some(QueryFootprint {
+                    latitude: lat,
+                    longitude: lon,
+                    radius_km: radius,
+                }),
+                trailing,
+            );
         }
     }
     (None, b.to_vec())

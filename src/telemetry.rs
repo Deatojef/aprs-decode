@@ -37,7 +37,10 @@ impl AprsTelemetry {
     pub(crate) fn parse(info: &[u8]) -> Result<Self, AprsError> {
         // info[0] = 'T', info[1] must be '#'
         if info.len() < 2 || info[1] != b'#' {
-            return Err(AprsError::TruncatedPacket { expected: 2, got: info.len() });
+            return Err(AprsError::TruncatedPacket {
+                expected: 2,
+                got: info.len(),
+            });
         }
         let body = &info[2..]; // skip "T#"
 
@@ -49,27 +52,33 @@ impl AprsTelemetry {
         let mut analog = [None; 5];
         for (i, slot) in analog.iter_mut().enumerate() {
             if let Some(part) = parts.get(i + 1) {
-                *slot = std::str::from_utf8(part).ok()
+                *slot = std::str::from_utf8(part)
+                    .ok()
                     .and_then(|s| s.trim().parse::<f32>().ok());
             }
         }
 
-        let digital = parts.get(6).and_then(|part| {
-            if part.len() >= 8 && part[..8].iter().all(|&c| c == b'0' || c == b'1') {
-                let mut val = 0u8;
-                for &bit in &part[..8] {
-                    val = (val << 1) | (bit - b'0');
+        let digital = parts
+            .get(6)
+            .and_then(|part| {
+                if part.len() >= 8 && part[..8].iter().all(|&c| c == b'0' || c == b'1') {
+                    let mut val = 0u8;
+                    for &bit in &part[..8] {
+                        val = (val << 1) | (bit - b'0');
+                    }
+                    Some(val)
+                } else {
+                    None
                 }
-                Some(val)
-            } else {
-                None
-            }
-        }).unwrap_or(0);
+            })
+            .unwrap_or(0);
 
         let comment = if parts.len() > 7 {
             let mut c = Vec::new();
             for (i, part) in parts[7..].iter().enumerate() {
-                if i > 0 { c.push(b','); }
+                if i > 0 {
+                    c.push(b',');
+                }
                 c.extend_from_slice(part);
             }
             c
@@ -77,7 +86,12 @@ impl AprsTelemetry {
             vec![]
         };
 
-        Ok(Self { sequence, analog, digital, comment })
+        Ok(Self {
+            sequence,
+            analog,
+            digital,
+            comment,
+        })
     }
 
     pub fn encode(&self) -> Vec<u8> {
@@ -165,8 +179,14 @@ impl TelemetryMetadata {
         let mut result = Vec::with_capacity(5);
         for i in 0..5 {
             let a = parts.get(i * 3).and_then(|p| parse_f32(p)).unwrap_or(0.0);
-            let b = parts.get(i * 3 + 1).and_then(|p| parse_f32(p)).unwrap_or(1.0);
-            let c = parts.get(i * 3 + 2).and_then(|p| parse_f32(p)).unwrap_or(0.0);
+            let b = parts
+                .get(i * 3 + 1)
+                .and_then(|p| parse_f32(p))
+                .unwrap_or(1.0);
+            let c = parts
+                .get(i * 3 + 2)
+                .and_then(|p| parse_f32(p))
+                .unwrap_or(0.0);
             result.push(TelemetryEquation { a, b, c });
         }
         result
@@ -201,10 +221,12 @@ fn parse_csv_fields(text: &[u8], max: usize) -> Vec<Option<Vec<u8>>> {
     text.split(|&c| c == b',')
         .take(max)
         .map(|part| {
-            let trimmed: Vec<u8> = part.iter().copied()
-                .skip_while(|&b| b == b' ')
-                .collect();
-            if trimmed.is_empty() { None } else { Some(trimmed) }
+            let trimmed: Vec<u8> = part.iter().copied().skip_while(|&b| b == b' ').collect();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
         })
         .collect()
 }
@@ -259,7 +281,11 @@ mod tests {
 
     #[test]
     fn equation_apply() {
-        let eq = TelemetryEquation { a: 0.0, b: 0.01, c: 0.0 };
+        let eq = TelemetryEquation {
+            a: 0.0,
+            b: 0.01,
+            c: 0.0,
+        };
         assert!((eq.apply(100.0) - 1.0).abs() < 0.001);
     }
 

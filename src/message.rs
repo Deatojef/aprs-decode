@@ -72,7 +72,11 @@ impl AprsMessage {
         let text = text_bytes.to_vec();
         let subtype = discriminate_subtype(&addressee, &text, id_bytes);
 
-        Ok(Self { addressee, text, subtype })
+        Ok(Self {
+            addressee,
+            text,
+            subtype,
+        })
     }
 
     pub fn encode(&self) -> Vec<u8> {
@@ -80,7 +84,10 @@ impl AprsMessage {
         out.push(b':');
         out.extend_from_slice(&self.addressee);
         // Pad addressee to 9 bytes
-        out.extend(std::iter::repeat_n(b' ', 9usize.saturating_sub(self.addressee.len())));
+        out.extend(std::iter::repeat_n(
+            b' ',
+            9usize.saturating_sub(self.addressee.len()),
+        ));
         out.push(b':');
 
         match &self.subtype {
@@ -111,10 +118,14 @@ impl AprsMessage {
 fn discriminate_subtype(addressee: &[u8], text: &[u8], id: Option<&[u8]>) -> MessageSubtype {
     // ACK / REJ are identified by the message text prefix
     if text.starts_with(b"ack") {
-        return MessageSubtype::Ack { id: text[3..].to_vec() };
+        return MessageSubtype::Ack {
+            id: text[3..].to_vec(),
+        };
     }
     if text.starts_with(b"rej") {
-        return MessageSubtype::Rej { id: text[3..].to_vec() };
+        return MessageSubtype::Rej {
+            id: text[3..].to_vec(),
+        };
     }
 
     // Bulletins: addressee starts with BLN
@@ -150,7 +161,9 @@ fn discriminate_subtype(addressee: &[u8], text: &[u8], id: Option<&[u8]>) -> Mes
         return MessageSubtype::DirectedQuery;
     }
 
-    MessageSubtype::Directed { id: id.map(|b| b.to_vec()) }
+    MessageSubtype::Directed {
+        id: id.map(|b| b.to_vec()),
+    }
 }
 
 #[cfg(test)]
@@ -167,7 +180,8 @@ mod tests {
 
     #[test]
     fn directed_with_id() {
-        let m = AprsMessage::parse(b":DESTINATI:Hello World! This msg has a : colon {329A7D5Z4").unwrap();
+        let m = AprsMessage::parse(b":DESTINATI:Hello World! This msg has a : colon {329A7D5Z4")
+            .unwrap();
         assert_eq!(m.addressee, b"DESTINATI");
         assert_eq!(m.text, b"Hello World! This msg has a : colon ");
         assert!(matches!(

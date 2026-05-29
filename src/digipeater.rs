@@ -85,8 +85,9 @@ pub enum Digipeater {
 impl Digipeater {
     /// Parse one via element from its textual bytes (without the surrounding commas).
     pub fn decode_textual(input: &[u8]) -> Result<Self, AprsError> {
-        // Q-constructs start with lowercase 'q'
-        if input.starts_with(b"q") {
+        // Q-constructs are `qA?` tokens (qAC, qAR, …); match the `qA` prefix so a
+        // genuine callsign isn't misclassified.
+        if input.starts_with(b"qA") {
             // Format: qXX,IGATECALL — but in the via list each element is comma-split
             // so a Q-construct is just the "qXX" token; the following callsign is
             // the next element. We store them together for fidelity.
@@ -105,8 +106,9 @@ impl Digipeater {
             (input, false)
         };
 
-        let callsign = Callsign::decode_textual(call_bytes)
-            .map_err(|_| AprsError::InvalidVia { raw: input.to_vec() })?;
+        let callsign = Callsign::decode_textual(call_bytes).map_err(|_| AprsError::InvalidVia {
+            raw: input.to_vec(),
+        })?;
 
         Ok(Digipeater::Callsign(callsign, heard))
     }
@@ -157,7 +159,7 @@ pub(crate) fn parse_via(bytes: &[u8]) -> Result<Vec<Digipeater>, AprsError> {
     let mut iter = bytes.split(|&b| b == b',').peekable();
 
     while let Some(element) = iter.next() {
-        if element.starts_with(b"q") {
+        if element.starts_with(b"qA") {
             let q = QConstruct::from_bytes(element);
             // The next element is the gateway callsign
             let gw = if let Some(next) = iter.next() {

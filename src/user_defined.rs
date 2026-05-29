@@ -20,9 +20,9 @@ impl AprsUserDefined {
     pub(crate) fn parse(info: &[u8]) -> Self {
         let body = info.get(1..).unwrap_or_default();
         Self {
-            user_id:     body.first().copied().unwrap_or(0),
+            user_id: body.first().copied().unwrap_or(0),
             packet_type: body.get(1).copied().unwrap_or(0),
-            data:        body.get(2..).unwrap_or_default().to_vec(),
+            data: body.get(2..).unwrap_or_default().to_vec(),
         }
     }
 

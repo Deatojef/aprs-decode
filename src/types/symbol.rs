@@ -55,6 +55,7 @@ impl Symbol {
 // Sources: APRS101.pdf, aprs.org/symbols, aprs.fi symbol reference.
 
 /// Primary symbol table (table ID = `/`).
+#[rustfmt::skip]
 const PRIMARY: [Option<&'static str>; 94] = [
     Some("Police, Sheriff"),            // ! 33
     None,                               // " 34  (no symbol)
@@ -133,6 +134,7 @@ const PRIMARY: [Option<&'static str>; 94] = [
 ];
 
 /// Alternate symbol table (table ID = `\` or any overlay character).
+#[rustfmt::skip]
 const ALTERNATE: [Option<&'static str>; 94] = [
     Some("Emergency"),                  // ! 33
     None,                               // " 34

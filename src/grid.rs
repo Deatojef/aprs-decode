@@ -22,7 +22,9 @@ impl AprsGridLocator {
         // info[0] = '[', then grid chars, then ']', then comment
         let body = info.get(1..).unwrap_or_default();
 
-        let end = body.iter().position(|&c| c == b']')
+        let end = body
+            .iter()
+            .position(|&c| c == b']')
             .ok_or(AprsError::UnsupportedPositionFormat)?;
 
         let grid = body[..end].to_vec();
@@ -47,7 +49,9 @@ impl AprsGridLocator {
 
     /// Convert the Maidenhead grid square to approximate lat/lon (center of the cell).
     pub fn to_position(&self) -> Option<(Latitude, Longitude)> {
-        if self.grid.len() < 4 { return None; }
+        if self.grid.len() < 4 {
+            return None;
+        }
 
         let fl = (self.grid[0] - b'A') as f64; // field longitude index
         let fa = (self.grid[1] - b'A') as f64; // field latitude index
@@ -111,7 +115,10 @@ mod tests {
 
     #[test]
     fn to_position_4char() {
-        let g = AprsGridLocator { grid: b"JO22".to_vec(), comment: vec![] };
+        let g = AprsGridLocator {
+            grid: b"JO22".to_vec(),
+            comment: vec![],
+        };
         let (lat, lon) = g.to_position().unwrap();
         // JO22 center: lon = 9*20 + 2*2 + 1 - 180 = 5°, lat = 14*10 + 2 + 0.5 - 90 = 52.5°
         assert_relative_eq!(lat.value(), 52.5, epsilon = 0.01);
@@ -120,7 +127,10 @@ mod tests {
 
     #[test]
     fn to_position_6char() {
-        let g = AprsGridLocator { grid: b"FN31pr".to_vec(), comment: vec![] };
+        let g = AprsGridLocator {
+            grid: b"FN31pr".to_vec(),
+            comment: vec![],
+        };
         let (lat, lon) = g.to_position().unwrap();
         // FN31pr: near New York City area
         assert!(lat.value() > 41.0 && lat.value() < 42.0);
